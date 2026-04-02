@@ -1,13 +1,12 @@
 import os
-import csv
+import pandas as pd
 from tqdm import tqdm
-
 
 import preprocessing
 
-def main():
+def RAG_Pipeline():
+    print("DEBUG: main() function called")
     "Main RAG pipeline will be executed here"
-
 
     print("=" * 60)
     print("PROGRAM EXECUTION STARTED")
@@ -28,7 +27,30 @@ def main():
     df = preprocessing.load_dataset(dataset_path)
     print(f"Loaded {len(df)} records from dataset")
 
-    
+    # ====================================================================
+    # STEP 2: Preprocess rows and save the new preprocessed csv if not done ignore
+    # ====================================================================
+    if( os.path.exists(os.path.join(data_dir, 'preprocessed.csv'))):
+        print("\nPreprocessed dataset already exists. Skipping preprocessing step.")
+    else:
+        print("\nStep 2 - Preprocessing rows...")
 
-if __name__ == "__main":
-    main
+        records = []
+
+        for _, row in tqdm(df.iterrows(), total=len(df), desc="Preprocessing"):
+            preprocessed = preprocessing.preprocess_row(row)
+            records.append(preprocessed)
+
+        print(f"Preprocessed {len(records)} records")
+
+        print("\nSaving preprocessed dataset...")
+
+        processed_df = pd.DataFrame(records)
+        
+        output_path = os.path.join(os.path.dirname(dataset_path), 'preprocessed.csv')
+        processed_df.to_csv(output_path, index=False)
+
+        print("Preprocessed dataset saved to preprocessed.csv")
+
+if __name__ == "__main__":  
+    RAG_Pipeline()
