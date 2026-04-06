@@ -20,8 +20,9 @@ def RAG_Pipeline():
 
     if not os.path.exists(dataset_path):
         print(f"ERROR: Dataset not found at {dataset_path}")
-        print("Please ensure Facility Management Unified Classification Database (FMUCD).csv is in the data directory")
-        return
+        print("Dataset is required to run this script.")
+        print("See README.md for instructions or download directly:")
+        print("https://data.mendeley.com/datasets/cb8d2nsjss/1")
 
     df = preprocessing.load_dataset(dataset_path)
     print(f"Loaded {len(df)} records from dataset")
