@@ -11,10 +11,9 @@ def RAG_Pipeline():
     print("=" * 60)
     print("PROGRAM EXECUTION STARTED")
     print("=" * 60)
-
-    # ====================================================================
+    
     # STEP 1: Load dataset
-    # ====================================================================
+    
     print("\n Step 1 - Loading dataset...")
     data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
     dataset_path = os.path.join(data_dir, 'Facility Management Unified Classification Database (FMUCD).csv')
@@ -26,10 +25,9 @@ def RAG_Pipeline():
 
     df = preprocessing.load_dataset(dataset_path)
     print(f"Loaded {len(df)} records from dataset")
-
-    # ====================================================================
+    
     # STEP 2: Preprocess rows and save the new preprocessed csv if not done ignore
-    # ====================================================================
+
     if( os.path.exists(os.path.join(data_dir, 'preprocessed.csv'))):
         print("\nPreprocessed dataset already exists. Skipping preprocessing step.")
     else:
