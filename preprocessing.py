@@ -16,18 +16,46 @@ def load_dataset(path):
 
 def normalize_text(text):
     """
-    normalizes the text and removes all lowecase, strips the whitespace, removes special characters
+    Normalize text for RAG dataset while preventing CSV corruption.
+    
+    Handles:
+    - NaN values
+    - newline characters
+    - quotes
+    - commas that break CSV structure
+    - unusual punctuation anomalies
+    - extra whitespace
     """
 
-    if( text is None or pd.isna(text)):
+    if text is None or pd.isna(text):
         return ""
-    
-    text = str(text).lower().strip()
 
-    #removes many whitespeaces and replaces with one whitespace
-    text = re.sub(r'\s+',' ',text)
-    #removes special characters but keeps alphanumeric and basic punctuation
-    text = re.sub(r'[^\w\s\-.,]', '', text)
+    text = str(text)
+
+    # remove newline characters that break CSV rows
+    text = text.replace("\n", " ").replace("\r", " ")
+
+    # remove quotes (major cause of EOF parsing error)
+    text = text.replace('"', '')
+    text = text.replace("'", "")
+
+    # replace commas with space (prevents extra columns forming)
+    text = text.replace(",", " ")
+
+    # remove other problematic separators sometimes found in datasets
+    text = text.replace(";", " ")
+    text = text.replace("|", " ")
+    text = text.replace("/", " ")
+
+    # convert to lowercase and strip whitespace
+    text = text.lower().strip()
+
+    # remove multiple whitespaces
+    text = re.sub(r'\s+', ' ', text)
+
+    # keep only safe characters for CSV + RAG search
+    # allows: letters, numbers, spaces, dash, period
+    text = re.sub(r'[^\w\s\-.]', '', text)
 
     return text
 
