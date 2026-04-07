@@ -1,8 +1,8 @@
 """ 
     Data cleaning module Handles: 
-    1. filling missing BuildingID, BuildingName, Type 
-    2. ensuring schema consistency 
-    3. safe CSV writing 
+    1. Filling in missing BuildingID, BuildingName, Type 
+    2. Ensuring schema consistency 
+    3. CSV writing 
 """
 
 from tqdm import tqdm
