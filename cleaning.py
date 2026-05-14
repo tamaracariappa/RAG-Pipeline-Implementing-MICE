@@ -5,7 +5,6 @@
     3. CSV writing 
 """
 
-from collections import Counter
 from tqdm import tqdm
 import re
 import pandas as pd
@@ -13,6 +12,7 @@ import numpy as np
 import csv
 
 tqdm.pandas()
+
 EXPECTED_COLUMNS = [
     "BuildingID",
     "BuildingName",
@@ -24,6 +24,44 @@ EXPECTED_COLUMNS = [
     "equipment"
 ]
 
+def group_missing_building_ids(df, num_groups=20):
+    """
+    Replace missing BuildingIDs with consistent UNK groups.
+    Ensures clustering without introducing false relationships.
+    """
+
+    tqdm.write("Grouping missing BuildingIDs into UNK buckets...")
+
+    missing_mask = (
+        df["BuildingID"].isna() |
+        (df["BuildingID"].str.strip() == "") |
+        (df["BuildingID"].str.lower().isin(["nan", "none"]))
+    )
+
+    total_missing = missing_mask.sum()
+
+    if total_missing == 0:
+        tqdm.write("No missing BuildingIDs found.")
+        return df
+
+    tqdm.write(f"Total missing BuildingIDs: {total_missing:,}")
+
+    # Create repeating group labels
+    group_ids = (
+        np.arange(total_missing) % num_groups
+    )
+
+    df.loc[missing_mask, "BuildingID"] = (
+        pd.Series(group_ids, index=df.index[missing_mask])
+        .map(lambda x: f"UNK_{x}")
+    )
+
+    # OPTIONAL: keep metadata consistent
+    df.loc[missing_mask & (df["BuildingName"] == ""), "BuildingName"] = "UNKNOWN_BUILDING"
+    df.loc[missing_mask & (df["Type"] == ""), "Type"] = "UNKNOWN_TYPE"
+
+    return df
+
 def load_preprocessed_csv(path):
 
     df = pd.read_csv(
@@ -34,44 +72,6 @@ def load_preprocessed_csv(path):
     )
 
     return df.fillna("")
-
-def build_building_reference(df):
-
-    building_reference = (
-        df[["BuildingID", "BuildingName", "Type"]]
-        .replace("", pd.NA)
-        .dropna()
-        .drop_duplicates()
-    )
-
-    return building_reference
-
-def fill_missing_building_values(df, valid_rows):
-
-    missing_mask = (df["BuildingID"] == "") | (df["BuildingID"].isna())
-
-    missing_indices = df.index[missing_mask]
-
-    total_missing = len(missing_indices)
-
-    tqdm.write(f"Filling {total_missing:,} missing BuildingID values...")
-
-    if total_missing == 0:
-        return df
-
-    ref_df = pd.DataFrame(valid_rows)
-
-    sampled = ref_df.sample(n=total_missing, replace=True).reset_index(drop=True)
-
-    for i, idx in enumerate(
-        tqdm(missing_indices, desc="Filling building metadata", unit="rows")
-    ):
-
-        df.at[idx, "BuildingID"] = sampled.at[i, "BuildingID"]
-        df.at[idx, "BuildingName"] = sampled.at[i, "BuildingName"]
-        df.at[idx, "Type"] = sampled.at[i, "Type"]
-
-    return df
 
 def enforce_schema(df):
 
@@ -100,21 +100,59 @@ def clean_preprocessed_dataset(input_path, output_path):
 
     df = load_preprocessed_csv(input_path)
 
-    # NEW STEP
-    df = infer_metadata_with_nlp(df)
+    # ----------------------------------
+    # STEP 1: Standardize BuildingID
+    # ----------------------------------
+    df["BuildingID"] = df["BuildingID"].astype(str).str.strip()
+    df["BuildingID"] = df["BuildingID"].replace(["nan", "None"], "")
 
-    valid_rows = build_building_reference(df)
+    # ----------------------------------
+    # STEP 2: FIX WOID (REMOVE EMPTY)
+    # ----------------------------------
+    before = len(df)
+    df["WOID"] = df["WOID"].replace("", np.nan)
+    df = df.dropna(subset=["WOID"])
+    print(f"Removed {before - len(df):,} rows with missing WOID")
 
-    df = fill_missing_building_values(df, valid_rows)
+    # ----------------------------------
+    # STEP 3: REMOVE DUPLICATE WOIDs
+    # ----------------------------------
+    before = len(df)
+    df = df.drop_duplicates(subset=["WOID"], keep="first")
+    print(f"Removed {before - len(df):,} duplicate WOIDs")
 
+    # ----------------------------------
+    # STEP 4: REMOVE WEAK DESCRIPTIONS
+    # ----------------------------------
+    before = len(df)
+    df = df[df["WODescription"].str.len() >= 20]
+    print(f"Removed {before - len(df):,} short descriptions")
+
+    # ----------------------------------
+    # STEP 5: GROUP MISSING BUILDING IDs
+    # ----------------------------------
+    df = group_missing_building_ids(df, num_groups=20)
+
+    # ----------------------------------
+    # STEP 6: LIGHT NORMALIZATION
+    # ----------------------------------
+    df["BuildingName"] = df["BuildingName"].replace("", "UNKNOWN_BUILDING")
+    df["Type"] = df["Type"].replace("", "UNKNOWN_TYPE")
+    df["WOEndDate"] = df["WOEndDate"].replace("", "ONGOING")
+
+    # ----------------------------------
+    # STEP 7: SCHEMA ENFORCEMENT
+    # ----------------------------------
     df = enforce_schema(df)
 
+    # ----------------------------------
+    # STEP 8: SAVE
+    # ----------------------------------
     save_clean_csv(df, output_path)
 
     print("Cleaning complete.")
 
     return df
-
 
 def normalize_text(text):
 
@@ -128,150 +166,3 @@ def normalize_text(text):
     text = re.sub(r"\s+", " ", text).strip()
 
     return text
-
-def extract_candidate_phrases(series):
-
-    patterns = [
-
-        r"-\s*([a-z0-9 ]+)",
-        r"([a-z]+)\s*st",
-        r"room\s*[a-z0-9]+",
-        r"zone\s*[a-z0-9]+",
-        r"lab\s*[a-z0-9]+",
-        r"[a-z]+\s*hall",
-        r"[a-z]+\s*gym",
-        r"[a-z]+\s*office"
-
-    ]
-
-    found = []
-
-    for text in series:
-
-        text = normalize_text(text)
-
-        for p in patterns:
-
-            matches = re.findall(p, text)
-
-            found.extend(matches)
-
-    return found
-
-def build_vocabulary(df, min_freq=25):
-
-    phrases = extract_candidate_phrases(df["WODescription"])
-
-    freq = Counter(phrases)
-
-    vocab = {
-
-        phrase:count
-
-        for phrase,count in freq.items()
-
-        if count >= min_freq
-
-    }
-
-    return vocab
-
-TYPE_SEEDS = {
-
-    "research":[
-        "lab", "chemical", "experiment"
-    ],
-
-    "teaching":[
-        "classroom", "lecture"
-    ],
-
-    "student experience":[
-        "gym", "hall", "union", "locker"
-    ],
-
-    "office":[
-        "office", "desk"
-    ],
-
-    "infrastructure":[
-        "hvac", "steam", "fan", "valve", "pump"
-    ]
-}
-
-def infer_type(desc, vocab):
-
-    desc = normalize_text(desc)
-
-    for t, seeds in TYPE_SEEDS.items():
-
-        for s in seeds:
-
-            if s in desc:
-                return t
-
-    for term in vocab:
-
-        if term in desc:
-
-            for t,seeds in TYPE_SEEDS.items():
-
-                if any(seed in term for seed in seeds):
-                    return t
-
-    return ""
-
-def infer_building(desc, vocab):
-
-    desc = normalize_text(desc)
-
-    for term in vocab:
-
-        if term in desc:
-
-            return term
-
-    return ""
-
-def infer_metadata_with_nlp(df):
-
-    tqdm.write("Building domain vocabulary...")
-
-    vocab = build_vocabulary(df)
-
-    tqdm.write(f"Discovered {len(vocab)} semantic patterns")
-
-    tqdm.write("Inferring missing metadata...")
-
-    missing_type_mask = df["Type"] == ""
-
-    df.loc[missing_type_mask, "Type"] = (
-
-        df.loc[missing_type_mask, "WODescription"]
-
-        .progress_apply(lambda x: infer_type(x, vocab))
-
-    )
-
-
-    missing_building_mask = df["BuildingName"] == ""
-
-    df.loc[missing_building_mask, "BuildingName"] = (
-
-        df.loc[missing_building_mask, "WODescription"]
-
-        .progress_apply(lambda x: infer_building(x, vocab))
-
-    )
-
-
-    df["Type"] = df["Type"].replace("", "UNKNOWN_TYPE")
-
-    df["BuildingName"] = df["BuildingName"].replace("", "UNKNOWN_BUILDING")
-
-    df["WOEndDate"] = df["WOEndDate"].replace("", "ONGOING")
-
-    df.loc[df["equipment"] == "", "equipment"] = df["Type"]
-
-    return df
-

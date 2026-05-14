@@ -208,3 +208,9 @@ __marimo__/
 
 
 *venv
+
+# Ignore dataset files
+data/
+*.csv
+*.json
+*.pkl
