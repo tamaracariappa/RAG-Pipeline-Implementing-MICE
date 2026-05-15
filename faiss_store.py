@@ -125,6 +125,7 @@ def persist():
 # -----------------------------
 
 def search_text(query_vector, top_k):
+    assert_initialized()
     scores, indices = text_index.search(
         np.array([query_vector]).astype(np.float32),
         top_k
@@ -134,9 +135,27 @@ def search_text(query_vector, top_k):
 
 
 def search_mice(query_vector, top_k):
+    assert_initialized()
     scores, indices = mice_index.search(
         np.array([query_vector]).astype(np.float32),
         top_k
     )
 
     return scores[0], indices[0], mice_metadata
+
+
+# -----------------------------
+# VALIDATION
+# -----------------------------
+
+def assert_initialized():
+
+    if text_index is None:
+        raise RuntimeError(
+            "FAISS text index not initialized."
+        )
+
+    if mice_index is None:
+        raise RuntimeError(
+            "FAISS MICE index not initialized."
+        )

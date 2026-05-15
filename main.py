@@ -251,24 +251,37 @@ def _stage_ingest():
 
 def _stage_evaluate_and_analyse() -> None:
     log.info("Stage 5 – Evaluation …")
+
     _fix_seeds()
+
+    # Load FAISS indexes into RAM
+    faiss_store.initialize_stores()
 
     # Generate once; reuse for both evaluation and analysis
     test_cases = generate_test_cases(seed=EVAL_SEED)
 
-    all_metrics = run_evaluation(test_cases=test_cases, seed=EVAL_SEED)
+    all_metrics = run_evaluation(
+        test_cases=test_cases,
+        seed=EVAL_SEED
+    )
+
     print_summary(all_metrics)
+
     save_summary_json(all_metrics, EVAL_RESULTS_PATH)
 
     log.info("Stage 6 – Analysis …")
-    analysis_csv = os.path.join(DATA_DIR, "per_query_analysis.csv")
-    run_full_analysis(
-        test_cases      = test_cases,
-        csv_path        = analysis_csv,
-        top_k           = DEFAULT_TOP_K,
-        print_n_examples= 5,
+
+    analysis_csv = os.path.join(
+        DATA_DIR,
+        "per_query_analysis.csv"
     )
 
+    run_full_analysis(
+        test_cases=test_cases,
+        csv_path=analysis_csv,
+        top_k=DEFAULT_TOP_K,
+        print_n_examples=5,
+    )
 
 # ─────────────────────────────────────────────────────────────
 # Entry point

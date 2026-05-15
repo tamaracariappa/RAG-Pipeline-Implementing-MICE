@@ -100,6 +100,8 @@ def strategy_a(query: str, top_k: int = DEFAULT_TOP_K):
     results = []
 
     for score, idx in zip(scores, indices):
+        if idx < 0 or idx >= len(metadata):
+            continue
 
         row = metadata[idx]
 
@@ -172,6 +174,9 @@ def strategy_c(query: str, top_k: int = DEFAULT_TOP_K):
 
     for score, idx in zip(scores, indices):
 
+        if idx < 0 or idx >= len(metadata):
+            continue
+            
         row = metadata[idx]
 
         results.append(
