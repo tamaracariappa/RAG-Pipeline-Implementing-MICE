@@ -1,0 +1,18 @@
+# FM-RAG Streamlit Visualization Platform
+# Install with: pip install -r streamlit_app/requirements_app.txt
+#
+# NOTE: This app also requires the parent project's dependencies.
+#       Install those first: pip install -r requirements.txt
+
+# Streamlit
+streamlit>=1.35.0
+
+# Visualization
+plotly>=5.18.0
+
+# PCA (already in scikit-learn from main requirements)
+scikit-learn>=1.4.0
+
+# Data
+pandas>=2.0.0
+numpy>=1.26.0
