@@ -1,5 +1,5 @@
 """
-embedding_builder.py – Text representation factories for the two embedding tracks.
+embedding_builder.py - Text representation factories for the two embedding tracks.
 
 TEXT representation  (Strategies A, B, B')
   Semantic fields only: BuildingName | Type | WODescription

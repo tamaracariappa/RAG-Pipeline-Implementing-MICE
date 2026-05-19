@@ -1,5 +1,5 @@
 """
-retrieval.py – Four retrieval strategies + query routing integration.
+retrieval.py - Four retrieval strategies + query routing integration.
 
 Core strategies A / B / B' / C are UNCHANGED.
 route_and_retrieve() is the single integration point for the QueryRouter:
@@ -88,7 +88,7 @@ def deduplicate(results: List[RetrievalResult]) -> List[RetrievalResult]:
 
 
 # ─────────────────────────────────────────────────────────────
-# Strategy A – Baseline
+# Strategy A - Baseline
 # ─────────────────────────────────────────────────────────────
 
 def strategy_a(query: str, top_k: int = DEFAULT_TOP_K):
@@ -121,7 +121,7 @@ def strategy_a(query: str, top_k: int = DEFAULT_TOP_K):
     return deduplicate(results)
 
 # ─────────────────────────────────────────────────────────────
-# Strategy B – Post-filter
+# Strategy B - Post-filter
 # ─────────────────────────────────────────────────────────────
 
 def strategy_b(query, filter_config, top_k=DEFAULT_TOP_K):
@@ -142,7 +142,7 @@ def strategy_b(query, filter_config, top_k=DEFAULT_TOP_K):
 
 
 # ─────────────────────────────────────────────────────────────
-# Strategy B' – Pre-filter
+# Strategy B' - Pre-filter
 # ─────────────────────────────────────────────────────────────
 
 def strategy_b_prime(query, filter_config, top_k=DEFAULT_TOP_K):
@@ -161,7 +161,7 @@ def strategy_b_prime(query, filter_config, top_k=DEFAULT_TOP_K):
 
 
 # ─────────────────────────────────────────────────────────────
-# Strategy C – MICE
+# Strategy C - MICE
 # ─────────────────────────────────────────────────────────────
 
 def strategy_c(query: str, top_k: int = DEFAULT_TOP_K):

@@ -1,5 +1,5 @@
 """
-config.py – Central configuration for the FM RAG Pipeline.
+config.py - Central configuration for the FM RAG Pipeline.
 All hyperparameters and paths live here; nothing else is hard-coded.
 """
 

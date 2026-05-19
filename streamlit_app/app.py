@@ -1,5 +1,5 @@
 """
-app.py – FM-RAG Visualization & Demonstration Platform
+app.py - FM-RAG Visualization & Demonstration Platform
 
 Entry point for the Streamlit application.
 Run with: streamlit run app.py

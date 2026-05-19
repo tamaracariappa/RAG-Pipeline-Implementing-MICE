@@ -1,5 +1,5 @@
 """
-pages/architecture.py – System architecture reference page.
+pages/architecture.py - System architecture reference page.
 """
 
 import streamlit as st

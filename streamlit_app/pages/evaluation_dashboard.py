@@ -1,5 +1,5 @@
 """
-pages/evaluation_dashboard.py – Metrics dashboard from real eval_results.json.
+pages/evaluation_dashboard.py - Metrics dashboard from real eval_results.json.
 """
 
 from __future__ import annotations

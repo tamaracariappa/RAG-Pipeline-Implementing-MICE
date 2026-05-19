@@ -1,5 +1,5 @@
 """
-pages/live_query.py – Live retrieval demo against real FAISS indexes.
+pages/live_query.py - Live retrieval demo against real FAISS indexes.
 
 Calls the existing retrieval.py strategies directly.
 Displays results side-by-side with latency and router decision.

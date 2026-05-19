@@ -1,5 +1,5 @@
 """
-embedder.py – Singleton embedding model (BAAI/bge-base-en-v1.5).
+embedder.py - Singleton embedding model (BAAI/bge-base-en-v1.5).
 
 Responsibilities:
   - Load the model once and reuse it (singleton pattern).

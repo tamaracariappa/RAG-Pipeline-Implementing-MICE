@@ -1,5 +1,5 @@
 """
-query_router.py – Lightweight rule-based query classifier and strategy router.
+query_router.py - Lightweight rule-based query classifier and strategy router.
 
 Design constraints:
   - Zero ML inference: pure regex + vocabulary lookup.
@@ -73,10 +73,10 @@ class QueryAnalysis:
     Result of classifying a raw query string.
 
     recommended_strategy:
-      'A'       – no metadata detected
-      'B'       – building_id only (post-filter is safer for ID lookups)
-      'B_prime' – equipment and/or type detected (pre-filter is efficient)
-      'C'       – caller-requested; not set by the router automatically
+      'A'       - no metadata detected
+      'B'       - building_id only (post-filter is safer for ID lookups)
+      'B_prime' - equipment and/or type detected (pre-filter is efficient)
+      'C'       - caller-requested; not set by the router automatically
     """
     query:                   str
     signal:                  QuerySignal

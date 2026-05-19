@@ -1,5 +1,5 @@
 """
-loaders/data_loader.py – Safe wrappers around existing project modules.
+loaders/data_loader.py - Safe wrappers around existing project modules.
 
 All imports are guarded so the Streamlit app loads even if FAISS indexes
 or the cleaned CSV are not yet built (shows a friendly "not ready" message

@@ -1,5 +1,5 @@
 """
-evaluation.py – Research-grade evaluation for the FM RAG pipeline.
+evaluation.py - Research-grade evaluation for the FM RAG pipeline.
 
 Replaces self-retrieval with a rigorous multi-document relevance model:
   - Relevance is defined by (equipment × type) topic grouping.
@@ -57,9 +57,9 @@ class TestCase:
     A single evaluation query with its ground-truth relevant document set.
 
     query_type:
-      'semantic'    – no metadata hint in query text; filter_config all-None.
+      'semantic'    - no metadata hint in query text; filter_config all-None.
                       Tests whether pure ANN recall is sufficient.
-      'constrained' – equipment/type tokens in query text; filter_config set.
+      'constrained' - equipment/type tokens in query text; filter_config set.
                       Tests whether metadata-aware strategies outperform A.
     """
     query_text:      str
@@ -115,7 +115,7 @@ class EvalDatasetBuilder:
         q = self._ZONE.sub(" ", q)
         q = self._INTERNAL_CODE.sub(" ", q)
         q = self._DASH_CODE.sub(" ", q)
-        q = self._WHITESPACE.sub(" ", q).strip(" -–|.,")
+        q = self._WHITESPACE.sub(" ", q).strip(" --|.,")
         return q
 
     def _semantic_query(self, desc: str, building_name: str) -> str:

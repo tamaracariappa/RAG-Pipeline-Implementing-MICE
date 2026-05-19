@@ -1,13 +1,13 @@
 """
-main.py – FM RAG Pipeline orchestrator with ATOMIC CHUNK-BASED CHECKPOINTING.
+main.py - FM RAG Pipeline orchestrator with ATOMIC CHUNK-BASED CHECKPOINTING.
 
 Stages:
   1. Dataset check
   2. Preprocessing   (skipped if output exists)
   3. Cleaning        (skipped if output exists)
   4. FAISS ingest    (RESUMABLE - atomic chunk-based checkpoints)
-  5. Evaluation      – all four strategies, shared query set, fixed seed
-  6. Analysis        – per-query comparison, win matrix, metadata impact, CSV export
+  5. Evaluation      - all four strategies, shared query set, fixed seed
+  6. Analysis        - per-query comparison, win matrix, metadata impact, CSV export
 
 ATOMIC CHECKPOINTING:
   - Tracks completed chunks (not rows) to avoid duplicates
@@ -130,8 +130,8 @@ def _check_dataset() -> bool:
 
 def _stage_preprocess() -> None:
     if os.path.exists(PREPROCESSED_PATH):
-        log.info("Preprocessed CSV exists – skipping."); return
-    log.info("Stage 2 – Preprocessing …")
+        log.info("Preprocessed CSV exists - skipping."); return
+    log.info("Stage 2 - Preprocessing …")
     df = preprocessing.load_dataset(RAW_DATASET_PATH)
     records = [preprocessing.preprocess_row(r) for _, r in tqdm(df.iterrows(), total=len(df))]
     pd.DataFrame(records).to_csv(PREPROCESSED_PATH, index=False)
@@ -140,8 +140,8 @@ def _stage_preprocess() -> None:
 
 def _stage_clean() -> None:
     if os.path.exists(CLEANED_PATH):
-        log.info("Cleaned CSV exists – skipping."); return
-    log.info("Stage 3 – Cleaning …")
+        log.info("Cleaned CSV exists - skipping."); return
+    log.info("Stage 3 - Cleaning …")
     cleaning.clean_preprocessed_dataset(PREPROCESSED_PATH, CLEANED_PATH)
 
 
@@ -173,7 +173,7 @@ def _stage_ingest():
         log.info("FAISS ingestion already completed - skipping")
         return
 
-    log.info("Stage 4 – FAISS ingest (atomic chunk-based checkpointing) …")
+    log.info("Stage 4 - FAISS ingest (atomic chunk-based checkpointing) …")
     
     # Load or initialize FAISS stores
     faiss_store.initialize_stores()
@@ -250,7 +250,7 @@ def _stage_ingest():
 
 
 def _stage_evaluate_and_analyse() -> None:
-    log.info("Stage 5 – Evaluation …")
+    log.info("Stage 5 - Evaluation …")
 
     _fix_seeds()
 
@@ -269,7 +269,7 @@ def _stage_evaluate_and_analyse() -> None:
 
     save_summary_json(all_metrics, EVAL_RESULTS_PATH)
 
-    log.info("Stage 6 – Analysis …")
+    log.info("Stage 6 - Analysis …")
 
     analysis_csv = os.path.join(
         DATA_DIR,
@@ -289,7 +289,7 @@ def _stage_evaluate_and_analyse() -> None:
 
 def RAG_Pipeline() -> None:
     print("=" * 60)
-    print("FM RAG PIPELINE – Research Edition")
+    print("FM RAG PIPELINE - Research Edition")
     print("Atomic Chunk-Based Checkpointing (Duplicate-Safe)")
     print("=" * 60)
     _fix_seeds()

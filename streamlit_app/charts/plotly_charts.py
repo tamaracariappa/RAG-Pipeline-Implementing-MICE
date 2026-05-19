@@ -1,5 +1,5 @@
 """
-charts/plotly_charts.py – Reusable Plotly figures for FM-RAG visualizations.
+charts/plotly_charts.py - Reusable Plotly figures for FM-RAG visualizations.
 
 All functions return go.Figure objects; Streamlit rendering is done in pages.
 """
@@ -103,7 +103,7 @@ def multi_metric_bar(
         for _, row in df.iterrows():
             s = row[strategy_col]
             fig.add_trace(go.Bar(
-                name=f"{STRATEGY_LABELS.get(s, s)} – {metric}",
+                name=f"{STRATEGY_LABELS.get(s, s)} - {metric}",
                 x=[metric],
                 y=[row.get(metric, 0.0)],
                 marker_color=STRATEGY_COLORS.get(s, "#8890a8"),

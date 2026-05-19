@@ -1,5 +1,5 @@
 """
-loaders/retrieval_runner.py – Thin wrapper around existing retrieval.py.
+loaders/retrieval_runner.py - Thin wrapper around existing retrieval.py.
 
 Provides a single timed_retrieve() function used by the Live Query page.
 All actual retrieval logic lives in the parent project's retrieval.py.
@@ -52,7 +52,7 @@ def run_strategy(
         filter_config: FilterConfig (required for B / B_prime)
 
     Returns:
-        (results, latency_ms) – results is a list of RetrievalResult objects.
+        (results, latency_ms) - results is a list of RetrievalResult objects.
         Returns ([], 0.0) on error.
     """
     if not _ensure_faiss_ready():

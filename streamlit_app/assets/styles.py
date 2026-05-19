@@ -1,5 +1,5 @@
 """
-assets/styles.py – Global CSS injection for the FM-RAG platform.
+assets/styles.py - Global CSS injection for the FM-RAG platform.
 
 Design direction: Industrial-precision.
 Monospace accents, slate/stone palette, sharp borders, no gradients.

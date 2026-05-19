@@ -1,5 +1,5 @@
 """
-pages/overview.py – Landing page: FM-RAG pipeline overview.
+pages/overview.py - Landing page: FM-RAG pipeline overview.
 """
 
 import streamlit as st

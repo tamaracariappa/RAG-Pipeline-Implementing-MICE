@@ -1,5 +1,5 @@
 """
-pages/dataset_explorer.py – Inspect work orders and their representations.
+pages/dataset_explorer.py - Inspect work orders and their representations.
 """
 
 import streamlit as st

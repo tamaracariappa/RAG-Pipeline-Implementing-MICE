@@ -1,4 +1,4 @@
-# FM RAG Pipeline – Python dependencies
+# FM RAG Pipeline - Python dependencies
 # Install with: pip install -r requirements.txt
 
 # Core ML / embeddings

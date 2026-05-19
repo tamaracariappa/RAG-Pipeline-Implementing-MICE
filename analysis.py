@@ -1,14 +1,14 @@
 """
-analysis.py – Result analysis tools for the FM RAG experiment.
+analysis.py - Result analysis tools for the FM RAG experiment.
 
 Provides:
-  QueryComparison         – per-query results across all four strategies
-  compare_all_strategies  – run all strategies on one query, return comparison
-  find_metadata_impact    – cases where metadata strategies beat A by ≥ threshold
-  compute_win_matrix      – pairwise strategy win/loss/tie counts
-  print_query_comparison  – human-readable per-query table
-  export_comparisons_csv  – full per-query CSV for offline analysis
-  run_full_analysis       – convenience wrapper used in main.py
+  QueryComparison         - per-query results across all four strategies
+  compare_all_strategies  - run all strategies on one query, return comparison
+  find_metadata_impact    - cases where metadata strategies beat A by ≥ threshold
+  compute_win_matrix      - pairwise strategy win/loss/tie counts
+  print_query_comparison  - human-readable per-query table
+  export_comparisons_csv  - full per-query CSV for offline analysis
+  run_full_analysis       - convenience wrapper used in main.py
 
 All functions are stateless and accept plain Python / dataclass inputs.
 No Milvus state is accessed here; results are passed in as arguments.

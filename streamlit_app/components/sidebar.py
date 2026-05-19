@@ -1,5 +1,5 @@
 """
-components/sidebar.py – Navigation sidebar for FM-RAG platform.
+components/sidebar.py - Navigation sidebar for FM-RAG platform.
 """
 
 import streamlit as st

@@ -1,5 +1,5 @@
 """
-pages/embedding_viz.py – PCA 2D visualization of FAISS embedding spaces.
+pages/embedding_viz.py - PCA 2D visualization of FAISS embedding spaces.
 
 Samples vectors efficiently from FAISS flat indexes.
 Never loads the full dataset into memory.

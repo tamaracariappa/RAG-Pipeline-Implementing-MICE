@@ -1,5 +1,5 @@
 """
-pages/vector_storage.py – Visual explanation of how FAISS stores embeddings.
+pages/vector_storage.py - Visual explanation of how FAISS stores embeddings.
 """
 
 import numpy as np

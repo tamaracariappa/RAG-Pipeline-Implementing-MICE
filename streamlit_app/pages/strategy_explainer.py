@@ -1,5 +1,5 @@
 """
-pages/strategy_explainer.py – Visual comparison of the four retrieval strategies.
+pages/strategy_explainer.py - Visual comparison of the four retrieval strategies.
 """
 
 import streamlit as st
@@ -182,7 +182,7 @@ def render():
 
     for s in STRATEGIES:
         with st.expander(
-            f"Strategy {s['key']} – {s['title']}", expanded=(s['key'] == 'A')
+            f"Strategy {s['key']} - {s['title']}", expanded=(s['key'] == 'A')
         ):
             d1, d2 = st.columns([2, 1], gap="large")
 
