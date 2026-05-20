@@ -27,13 +27,13 @@ PIPELINE_STEPS = [
 ]
 
 STRATEGY_SUMMARY = [
-    ("A", "#4f8ef7", "Semantic only",
+    ("A", "#2D336B", "Semantic only",
      "Pure vector similarity. No metadata filtering. Best baseline."),
-    ("B", "#38c96e", "Post-filter",
+    ("B", "#7886C7", "Post-filter",
      "Fetch top-N semantically, then apply metadata filters in Python."),
-    ("B′","#f7a94f", "Pre-filter",
+    ("B′","#A9B5DF", "Pre-filter",
      "Expand the candidate pool, filter before returning top-k."),
-    ("C", "#e06c75", "MICE",
+    ("C", "#5C6BC0", "MICE",
      "Metadata-Infused Contextual Embeddings. Filter baked into the vector."),
 ]
 
@@ -100,9 +100,9 @@ def render():
     st.markdown("<br/>", unsafe_allow_html=True)
     section_header("Research Question")
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;border-left:3px solid #4f8ef7;
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;border-left:3px solid #2D336B;
                 border-radius:4px;padding:1rem 1.4rem;font-size:0.9rem;
-                color:#e4e6f0;line-height:1.7;">
+                color:#2D336B;line-height:1.7;">
         Does incorporating <strong>structured metadata</strong> (building type, equipment system)
         into the retrieval pipeline improve work-order retrieval recall
         compared to <strong>pure semantic</strong> vector search?
@@ -116,15 +116,15 @@ def render():
     for col, (label, color, title, desc) in zip(cols, STRATEGY_SUMMARY):
         with col:
             st.markdown(f"""
-            <div style="background:#1a1d27;border:1px solid #2a2d3e;
+            <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                         border-top:3px solid {color};border-radius:6px;
                         padding:1rem;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:1.5rem;
                             font-weight:600;color:{color};">{label}</div>
                 <div style="font-size:0.75rem;font-weight:600;
                             text-transform:uppercase;letter-spacing:0.06em;
-                            color:#e4e6f0;margin:0.3rem 0 0.6rem;">{title}</div>
-                <div style="font-size:0.78rem;color:#8890a8;line-height:1.5;">{desc}</div>
+                            color:#2D336B;margin:0.3rem 0 0.6rem;">{title}</div>
+                <div style="font-size:0.78rem;color:#7886C7;line-height:1.5;">{desc}</div>
             </div>""", unsafe_allow_html=True)
 
     # ── Dual embedding track ─────────────────────────────────
@@ -134,34 +134,34 @@ def render():
     t, m = st.columns(2, gap="large")
     with t:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                     border-radius:6px;padding:1.1rem;">
             <div style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;
-                        color:#4f8ef7;margin-bottom:0.5rem;">TEXT Track · Strategies A, B, B′</div>
+                        color:#2D336B;margin-bottom:0.5rem;">TEXT Track · Strategies A, B, B′</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;
-                        color:#98c4fb;background:#0d1117;padding:0.7rem;
+                        color:#2D336B;background:#FFF2F2;padding:0.7rem;
                         border-radius:4px;line-height:1.8;">
                 BuildingName | Type | WODescription
             </div>
-            <div style="font-size:0.78rem;color:#8890a8;margin-top:0.7rem;line-height:1.5;">
+            <div style="font-size:0.78rem;color:#7886C7;margin-top:0.7rem;line-height:1.5;">
                 Compact semantic signal. Metadata applied as a post-retrieval filter.
             </div>
         </div>""", unsafe_allow_html=True)
 
     with m:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                     border-radius:6px;padding:1.1rem;">
             <div style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;
-                        color:#e06c75;margin-bottom:0.5rem;">MICE Track · Strategy C</div>
+                        color:#7886C7;margin-bottom:0.5rem;">MICE Track · Strategy C</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:0.78rem;
-                        color:#f19898;background:#0d1117;padding:0.7rem;
+                        color:#7886C7;background:#FFF2F2;padding:0.7rem;
                         border-radius:4px;line-height:1.8;">
                 building id: … building name: …<br>
                 facility type: … equipment system: …<br>
                 work order description: …
             </div>
-            <div style="font-size:0.78rem;color:#8890a8;margin-top:0.7rem;line-height:1.5;">
+            <div style="font-size:0.78rem;color:#7886C7;margin-top:0.7rem;line-height:1.5;">
                 Metadata baked directly into the embedding. No post-filtering needed.
             </div>
         </div>""", unsafe_allow_html=True)

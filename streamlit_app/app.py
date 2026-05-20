@@ -26,6 +26,29 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Hide Streamlit default multipage navigation
+st.markdown("""
+<style>
+
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+
+section[data-testid="stSidebar"] {
+    padding-top: 0rem !important;
+}
+
+section[data-testid="stSidebar"] > div {
+    padding-top: 0rem !important;
+}
+
+[data-testid="stSidebarContent"] {
+    padding-top: 0rem !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 # ── Inject global CSS ────────────────────────────────────────
 from assets.styles import inject_global_css
 inject_global_css()

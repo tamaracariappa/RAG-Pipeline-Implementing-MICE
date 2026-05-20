@@ -47,40 +47,63 @@ def render():
     # ── Architecture diagram ─────────────────────────────────
     section_header("Ingestion Pipeline")
 
-    st.markdown("""
-    <div style="display:flex;gap:0.5rem;align-items:center;
-                flex-wrap:wrap;margin-bottom:1rem;">
-        {steps}
-    </div>
-    """.format(steps="".join([
-        f"""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
-                    border-radius:4px;padding:0.5rem 0.85rem;
-                    font-size:0.75rem;color:#e4e6f0;white-space:nowrap;">
-            {s}
-        </div>
-        {"<div style='color:#4f8ef7;font-size:0.9rem;'>→</div>" if i < 5 else ""}
-        """
-        for i, s in enumerate([
-            "Raw Work Order",
-            "Text / MICE Repr",
-            "bge-base-en-v1.5",
-            "768-dim float32",
-            "IndexFlatIP.add()",
-            "FAISS on disk",
-        ])
-    ])), unsafe_allow_html=True)
+    steps = [
+        "Raw Work Order",
+        "Text / MICE Repr",
+        "bge-base-en-v1.5",
+        "768-dim float32",
+        "IndexFlatIP.add()",
+        "FAISS on disk",
+    ]
 
+    cols = st.columns(len(steps) * 2 - 1)
+
+    for i, step in enumerate(steps):
+        with cols[i * 2]:
+            st.markdown(
+                f"""
+                <div style="
+                    background:#FFFFFF;
+                    border:1px solid #A9B5DF;
+                    border-radius:6px;
+                    padding:0.7rem 0.8rem;
+                    text-align:center;
+                    font-size:0.78rem;
+                    color:#2D336B;
+                    font-weight:500;
+                    white-space:nowrap;
+                ">
+                    {step}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if i < len(steps) - 1:
+            with cols[i * 2 + 1]:
+                st.markdown(
+                    """
+                    <div style="
+                        text-align:center;
+                        font-size:1rem;
+                        color:#7886C7;
+                        padding-top:0.5rem;
+                    ">
+                        →
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
     left, right = st.columns(2, gap="large")
 
     with left:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                     border-radius:6px;padding:1.1rem;">
             <div style="font-size:0.7rem;letter-spacing:0.1em;
-                        text-transform:uppercase;color:#4f8ef7;
+                        text-transform:uppercase;color:#2D336B;
                         margin-bottom:0.8rem;">TEXT Index · text.index</div>
-            <ul style="font-size:0.8rem;color:#8890a8;
+            <ul style="font-size:0.8rem;color:#7886C7;
                        padding-left:1.1rem;line-height:2.0;">
                 <li>One vector per work order</li>
                 <li>Input: BuildingName | Type | WODescription</li>
@@ -91,12 +114,12 @@ def render():
 
     with right:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                     border-radius:6px;padding:1.1rem;">
             <div style="font-size:0.7rem;letter-spacing:0.1em;
-                        text-transform:uppercase;color:#e06c75;
+                        text-transform:uppercase;color:#7886C7;
                         margin-bottom:0.8rem;">MICE Index · mice.index</div>
-            <ul style="font-size:0.8rem;color:#8890a8;
+            <ul style="font-size:0.8rem;color:#7886C7;
                        padding-left:1.1rem;line-height:2.0;">
                 <li>One vector per work order</li>
                 <li>Input: labelled sentence template (all fields)</li>
@@ -113,7 +136,7 @@ def render():
     with ec1:
         st.markdown("""
         <div style="font-size:0.72rem;letter-spacing:0.08em;
-                    text-transform:uppercase;color:#8890a8;
+                    text-transform:uppercase;color:#7886C7;
                     margin-bottom:0.4rem;">Input text</div>""",
                     unsafe_allow_html=True)
         repr_block(
@@ -124,7 +147,7 @@ def render():
     with ec2:
         st.markdown("""
         <div style="font-size:0.72rem;letter-spacing:0.08em;
-                    text-transform:uppercase;color:#8890a8;
+                    text-transform:uppercase;color:#7886C7;
                     margin-bottom:0.4rem;">Output vector (768 dims · truncated)</div>""",
                     unsafe_allow_html=True)
         example_vec = np.array([
@@ -136,7 +159,7 @@ def render():
         repr_block("[ " + "  ".join(f"{v:+.4f}" for v in example_vec) + "  … (×748) ]")
 
     st.markdown("""
-    <div style="font-size:0.78rem;color:#8890a8;margin-top:0.5rem;line-height:1.6;">
+    <div style="font-size:0.78rem;color:#7886C7;margin-top:0.5rem;line-height:1.6;">
         The full 768-dimensional vector is L2-normalised before storage,
         so inner-product search equals cosine similarity.
         A query vector is computed the same way and the top-k closest
@@ -148,29 +171,29 @@ def render():
     section_header("Cosine Similarity")
 
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                 border-radius:6px;padding:1.1rem;">
         <div style="font-family:'IBM Plex Mono',monospace;font-size:0.9rem;
-                    color:#98c4fb;text-align:center;margin-bottom:0.8rem;">
+                    color:#2D336B;text-align:center;margin-bottom:0.8rem;">
             sim(Q, D) = Q · D  &nbsp;|&nbsp;  (after L2 normalisation)
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;">
             <div style="text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:1.2rem;
-                            color:#38c96e;">≈ 1.0</div>
-                <div style="font-size:0.74rem;color:#8890a8;margin-top:0.2rem;">
+                            color:#7886C7;">≈ 1.0</div>
+                <div style="font-size:0.74rem;color:#7886C7;margin-top:0.2rem;">
                     Near-identical work orders</div>
             </div>
             <div style="text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:1.2rem;
-                            color:#f7a94f;">≈ 0.7</div>
-                <div style="font-size:0.74rem;color:#8890a8;margin-top:0.2rem;">
+                            color:#7886C7;">≈ 0.7</div>
+                <div style="font-size:0.74rem;color:#7886C7;margin-top:0.2rem;">
                     Related topic, different context</div>
             </div>
             <div style="text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:1.2rem;
-                            color:#e06c75;">≈ 0.3</div>
-                <div style="font-size:0.74rem;color:#8890a8;margin-top:0.2rem;">
+                            color:#7886C7;">≈ 0.3</div>
+                <div style="font-size:0.74rem;color:#7886C7;margin-top:0.2rem;">
                     Unrelated work orders</div>
             </div>
         </div>
@@ -212,10 +235,10 @@ def render():
     st.markdown("<br/>", unsafe_allow_html=True)
     section_header("Checkpointing")
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                 border-radius:6px;padding:1rem;">
-        <div style="font-size:0.8rem;color:#8890a8;line-height:1.8;">
-            Ingestion is <strong style="color:#e4e6f0;">chunk-based and atomic</strong>.
+        <div style="font-size:0.8rem;color:#7886C7;line-height:1.8;">
+            Ingestion is <strong style="color:#2D336B;">chunk-based and atomic</strong>.
             Each CSV chunk (~10,000 rows) is fully embedded, inserted, and persisted
             before the chunk is marked complete in <code>ingestion_progress.json</code>.
             A power cut can only interrupt between chunks — no partial or duplicate

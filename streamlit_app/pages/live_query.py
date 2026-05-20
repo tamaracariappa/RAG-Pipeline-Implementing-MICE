@@ -23,10 +23,10 @@ EXAMPLE_QUERIES = [
 ]
 
 STRATEGY_META = {
-    "A":       ("#4f8ef7", "Semantic Only",        "Vector search, no metadata filter"),
-    "B":       ("#38c96e", "Post-Filter",           "Fetch wide, filter after"),
-    "B_prime": ("#f7a94f", "Pre-Filter",            "Expanded pool, filter before top-k"),
-    "C":       ("#e06c75", "MICE",                  "Metadata baked into the embedding"),
+    "A":       ("#2D336B", "Semantic Only",        "Vector search, no metadata filter"),
+    "B":       ("#7886C7", "Post-Filter",           "Fetch wide, filter after"),
+    "B_prime": ("#A9B5DF", "Pre-Filter",            "Expanded pool, filter before top-k"),
+    "C":       ("#5C6BC0", "MICE",                  "Metadata baked into the embedding"),
 }
 
 
@@ -34,7 +34,7 @@ def _render_results(results: list, strategy: str) -> None:
     color, _, _ = STRATEGY_META[strategy]
     if not results:
         st.markdown(
-            f'<div style="color:#8890a8;font-size:0.82rem;padding:0.5rem;">'
+            f'<div style="color:#7886C7;font-size:0.82rem;padding:0.5rem;">'
             f'No results returned.</div>',
             unsafe_allow_html=True,
         )
@@ -75,7 +75,7 @@ def render():
 
     # Example queries
     st.markdown(
-        '<div style="font-size:0.7rem;color:#8890a8;margin-bottom:0.3rem;">'
+        '<div style="font-size:0.7rem;color:#7886C7;margin-bottom:0.3rem;">'
         'Quick examples:</div>',
         unsafe_allow_html=True,
     )
@@ -143,16 +143,16 @@ def render():
         color, label, _ = STRATEGY_META[s]
         with col:
             st.markdown(f"""
-            <div style="background:#1a1d27;border:1px solid #2a2d3e;
+            <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                         border-top:2px solid {color};border-radius:4px;
                         padding:0.7rem;text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:1.1rem;
                             color:{color};font-weight:600;">{s}</div>
-                <div style="font-size:0.68rem;color:#8890a8;text-transform:uppercase;
+                <div style="font-size:0.68rem;color:#7886C7;text-transform:uppercase;
                             letter-spacing:0.06em;">{label}</div>
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem;
-                            color:#38c96e;margin-top:0.3rem;">{lat:.1f} ms</div>
-                <div style="font-size:0.7rem;color:#8890a8;">
+                            color:#7886C7;margin-top:0.3rem;">{lat:.1f} ms</div>
+                <div style="font-size:0.7rem;color:#7886C7;">
                     {len(all_results[s][0])} results
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -168,16 +168,16 @@ def render():
             color, label, desc = STRATEGY_META[s]
 
             st.markdown(f"""
-            <div style="background:#1a1d27;border:1px solid #2a2d3e;
+            <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                         border-radius:4px;padding:0.7rem 1rem;
                         margin-bottom:0.8rem;">
                 <span style="font-family:'IBM Plex Mono',monospace;
                             font-size:0.9rem;font-weight:600;color:{color};">
                     Strategy {s}</span>
-                <span style="font-size:0.75rem;color:#8890a8;margin-left:0.8rem;">
+                <span style="font-size:0.75rem;color:#7886C7;margin-left:0.8rem;">
                     {label} · {desc}</span>
                 <span style="font-family:'IBM Plex Mono',monospace;
-                            font-size:0.75rem;color:#38c96e;float:right;">
+                            font-size:0.75rem;color:#7886C7;float:right;">
                     {lat:.1f} ms · {len(results)} results</span>
             </div>""", unsafe_allow_html=True)
 
@@ -196,7 +196,7 @@ def render():
                     filter_str = " · ".join(
                         f'{k}=<b>{v}</b>' for k, v in active_filters.items())
                     st.markdown(
-                        f'<div style="font-size:0.72rem;color:#f7a94f;'
+                        f'<div style="font-size:0.72rem;color:#7886C7;'
                         f'margin-top:0.5rem;">Active filters: {filter_str}</div>',
                         unsafe_allow_html=True,
                     )
@@ -211,7 +211,7 @@ def render():
                 scores_by_strategy, "Score Distribution by Strategy")
             st.plotly_chart(fig, use_container_width=True)
             st.markdown("""
-            <div style="font-size:0.78rem;color:#8890a8;">
+            <div style="font-size:0.78rem;color:#7886C7;">
                 Higher scores = more similar to the query vector.
                 Strategy C (MICE) often shows a different distribution
                 because queries are prefixed with "work order description: "
@@ -222,7 +222,7 @@ def render():
         fig_lat = latency_bar(latencies)
         st.plotly_chart(fig_lat, use_container_width=True)
         st.markdown("""
-        <div style="font-size:0.78rem;color:#8890a8;line-height:1.6;">
+        <div style="font-size:0.78rem;color:#7886C7;line-height:1.6;">
             Strategy A is typically fastest (single FAISS search).
             B and B′ are slower due to the expanded candidate pool and Python-level filtering.
             C searches the MICE index with a prefixed query—latency is similar to A

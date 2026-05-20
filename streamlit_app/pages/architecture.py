@@ -33,9 +33,9 @@ CONFIG_KEYS = [
 
 def _code_block(text: str) -> None:
     st.markdown(
-        f'<div style="background:#0d1117;border:1px solid #2a2d3e;'
+        f'<div style="background:#FFF2F2;border:1px solid #A9B5DF;'
         f'border-radius:4px;padding:0.8rem;font-family:\'IBM Plex Mono\',monospace;'
-        f'font-size:0.78rem;color:#98c4fb;white-space:pre-wrap;">{text}</div>',
+        f'font-size:0.78rem;color:#2D336B;white-space:pre-wrap;">{text}</div>',
         unsafe_allow_html=True,
     )
 
@@ -74,13 +74,13 @@ def render():
 
     with a1:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
-                    border-left:3px solid #4f8ef7;border-radius:4px;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
+                    border-left:3px solid #2D336B;border-radius:4px;
                     padding:1rem;">
             <div style="font-size:0.7rem;letter-spacing:0.1em;
-                        text-transform:uppercase;color:#4f8ef7;
+                        text-transform:uppercase;color:#2D336B;
                         margin-bottom:0.6rem;">TEXT Track</div>
-            <ul style="font-size:0.8rem;color:#8890a8;
+            <ul style="font-size:0.8rem;color:#7886C7;
                        padding-left:1.1rem;line-height:2.0;">
                 <li>File: <code>text.index</code> + <code>text_metadata.pkl</code></li>
                 <li>Repr: <code>BuildingName | Type | WODescription</code></li>
@@ -91,13 +91,13 @@ def render():
 
     with a2:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
-                    border-left:3px solid #e06c75;border-radius:4px;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
+                    border-left:3px solid #7886C7;border-radius:4px;
                     padding:1rem;">
             <div style="font-size:0.7rem;letter-spacing:0.1em;
-                        text-transform:uppercase;color:#e06c75;
+                        text-transform:uppercase;color:#7886C7;
                         margin-bottom:0.6rem;">MICE Track</div>
-            <ul style="font-size:0.8rem;color:#8890a8;
+            <ul style="font-size:0.8rem;color:#7886C7;
                        padding-left:1.1rem;line-height:2.0;">
                 <li>File: <code>mice.index</code> + <code>mice_metadata.pkl</code></li>
                 <li>Repr: labelled sentence template (all 6 fields)</li>
@@ -118,7 +118,7 @@ def render():
         "work order description: {description}."
     )
     st.markdown("""
-    <div style="font-size:0.78rem;color:#8890a8;margin-top:0.5rem;line-height:1.6;">
+    <div style="font-size:0.78rem;color:#7886C7;margin-top:0.5rem;line-height:1.6;">
         Lowercase field labels match BGE's MSMARCO training distribution.
         Field ordering: categorical → temporal → free-text places high-selectivity
         fields early in the token sequence where positional attention is strongest.
@@ -129,10 +129,10 @@ def render():
     section_header("Atomic Chunk-Based Checkpointing")
 
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                 border-radius:6px;padding:1.1rem;">
-        <div style="font-size:0.8rem;color:#8890a8;line-height:1.9;">
-            Each CSV chunk is processed as an <strong style="color:#e4e6f0;">atomic unit</strong>:
+        <div style="font-size:0.8rem;color:#7886C7;line-height:1.9;">
+            Each CSV chunk is processed as an <strong style="color:#2D336B;">atomic unit</strong>:
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -145,7 +145,7 @@ def render():
         "6. Mark chunk complete in ingestion_progress.json",
     ]
     for i, step in enumerate(steps):
-        color = "#4f8ef7" if i < 4 else "#38c96e"
+        color = "#2D336B" if i < 4 else "#7886C7"
         st.markdown(
             f'<div style="font-family:\'IBM Plex Mono\',monospace;'
             f'font-size:0.78rem;color:{color};padding:0.15rem 0;">{step}</div>',
@@ -153,7 +153,7 @@ def render():
         )
 
     st.markdown("""
-    <div style="font-size:0.78rem;color:#8890a8;margin-top:0.6rem;line-height:1.6;">
+    <div style="font-size:0.78rem;color:#7886C7;margin-top:0.6rem;line-height:1.6;">
         Power cuts can only interrupt <em>between</em> chunks.
         No partial or duplicate vectors are written.
         Delete <code>data/ingestion_progress.json</code> to restart from scratch.
@@ -164,18 +164,18 @@ def render():
     section_header("Query Router Design")
 
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                 border-radius:6px;padding:1.1rem;">
-        <div style="font-size:0.8rem;color:#8890a8;line-height:1.8;">
-            <strong style="color:#e4e6f0;">Zero ML inference.</strong>
+        <div style="font-size:0.8rem;color:#7886C7;line-height:1.8;">
+            <strong style="color:#2D336B;">Zero ML inference.</strong>
             Pure regex + vocabulary lookup → deterministic, &lt;1 ms latency.<br><br>
-            <strong style="color:#f7a94f;">Equipment or type vocabulary hit</strong>
+            <strong style="color:#A9B5DF;">Equipment or type vocabulary hit</strong>
             → Strategy B′ (pre-filter)<br>
-            <strong style="color:#38c96e;">Building ID pattern (e.g. A050)</strong>
+            <strong style="color:#7886C7;">Building ID pattern (e.g. A050)</strong>
             → Strategy B (post-filter)<br>
-            <strong style="color:#4f8ef7;">No metadata signals detected</strong>
+            <strong style="color:#2D336B;">No metadata signals detected</strong>
             → Strategy A (semantic baseline)<br>
-            <strong style="color:#e06c75;">Caller explicit override</strong>
+            <strong style="color:#5C6BC0;">Caller explicit override</strong>
             → Strategy C (MICE)
         </div>
     </div>""", unsafe_allow_html=True)
@@ -185,9 +185,9 @@ def render():
     section_header("Evaluation Design")
 
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                 border-radius:6px;padding:1.1rem;">
-        <ul style="font-size:0.8rem;color:#8890a8;
+        <ul style="font-size:0.8rem;color:#7886C7;
                    padding-left:1.2rem;line-height:2.0;margin:0;">
             <li>500 auto-generated test queries (seed=42, reproducible)</li>
             <li>Queries drawn from four types: semantic, equipment, type, mixed</li>
@@ -206,12 +206,12 @@ def render():
     fd1, fd2 = st.columns(2, gap="large")
     with fd1:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                     border-radius:6px;padding:1rem;">
             <div style="font-size:0.72rem;letter-spacing:0.08em;
-                        text-transform:uppercase;color:#4f8ef7;
+                        text-transform:uppercase;color:#2D336B;
                         margin-bottom:0.5rem;">Retrieval</div>
-            <ul style="font-size:0.78rem;color:#8890a8;
+            <ul style="font-size:0.78rem;color:#7886C7;
                        padding-left:1rem;line-height:1.9;margin:0;">
                 <li>Hybrid BM25 + dense retrieval (RRF fusion)</li>
                 <li>FAISS IVF index for sub-linear search at scale</li>
@@ -221,12 +221,12 @@ def render():
         </div>""", unsafe_allow_html=True)
     with fd2:
         st.markdown("""
-        <div style="background:#1a1d27;border:1px solid #2a2d3e;
+        <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                     border-radius:6px;padding:1rem;">
             <div style="font-size:0.72rem;letter-spacing:0.08em;
-                        text-transform:uppercase;color:#38c96e;
+                        text-transform:uppercase;color:#7886C7;
                         margin-bottom:0.5rem;">System</div>
-            <ul style="font-size:0.78rem;color:#8890a8;
+            <ul style="font-size:0.78rem;color:#7886C7;
                        padding-left:1rem;line-height:1.9;margin:0;">
                 <li>REST API wrapper around route_and_retrieve()</li>
                 <li>Incremental index updates without full rebuild</li>

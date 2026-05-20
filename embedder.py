@@ -14,6 +14,7 @@ BGE-v1.5 note:
 from __future__ import annotations
 
 from typing import List
+import threading
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -24,24 +25,49 @@ from config import EMBEDDING_MODEL, EMBEDDING_DIM, EMBED_BATCH_SIZE, NORMALIZE_E
 # Singleton
 # ─────────────────────────────────────────────────────────────
 _model: SentenceTransformer | None = None
+_model_lock = threading.Lock()
 
 # Instruction prefix recommended by BGE for retrieval queries
 _BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 
 def get_model() -> SentenceTransformer:
-    """Return the singleton SentenceTransformer, loading it on first call."""
+    """
+    Thread-safe singleton model loader.
+
+    Prevents Streamlit reruns from trying to initialize the
+    SentenceTransformer multiple times simultaneously.
+    """
     global _model
-    if _model is None:
+
+    if _model is not None:
+        return _model
+
+    with _model_lock:
+
+        # another thread may have loaded it already
+        if _model is not None:
+            return _model
+
         print(f"[Embedder] Loading model: {EMBEDDING_MODEL}")
-        _model = SentenceTransformer(EMBEDDING_MODEL)
-        actual_dim = _model.get_sentence_embedding_dimension()
+
+        model = SentenceTransformer(
+            EMBEDDING_MODEL,
+            device="cpu"
+        )
+
+        actual_dim = model.get_sentence_embedding_dimension()
+
         if actual_dim != EMBEDDING_DIM:
             raise RuntimeError(
-                f"Model dim {actual_dim} ≠ config EMBEDDING_DIM {EMBEDDING_DIM}. "
-                "Update config.py."
+                f"Model dim {actual_dim} ≠ "
+                f"config EMBEDDING_DIM {EMBEDDING_DIM}"
             )
+
         print(f"[Embedder] Ready. Embedding dim: {actual_dim}")
+
+        _model = model
+
     return _model
 
 

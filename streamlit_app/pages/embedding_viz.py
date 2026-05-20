@@ -125,16 +125,16 @@ def render():
 
     # Explanation
     st.markdown(f"""
-    <div style="font-size:0.78rem;color:#8890a8;line-height:1.6;
-                background:#1a1d27;border:1px solid #2a2d3e;
+    <div style="font-size:0.78rem;color:#7886C7;line-height:1.6;
+                background:#FFFFFF;border:1px solid #A9B5DF;
                 border-radius:4px;padding:0.8rem 1rem;">
-        <b style="color:#e4e6f0;">Reading this chart:</b><br>
+        <b style="color:#2D336B;">Reading this chart:</b><br>
         Each dot is one work order encoded as a 768-dim vector and projected to 2D via PCA.
         Points that cluster together have similar embeddings → the retrieval engine ranks
         them as semantically close. Tight, well-separated clusters indicate the model
         has learned meaningful representations for {color_by_label} categories.<br><br>
-        PC1 explains <b style="color:#4f8ef7;">{expl[0]:.1%}</b> of variance ·
-        PC2 explains <b style="color:#4f8ef7;">{expl[1]:.1%}</b>
+        PC1 explains <b style="color:#2D336B;">{expl[0]:.1%}</b> of variance ·
+        PC2 explains <b style="color:#2D336B;">{expl[1]:.1%}</b>
     </div>""", unsafe_allow_html=True)
 
     # ── MICE vs TEXT comparison ──────────────────────────────
@@ -168,7 +168,7 @@ def render():
                 )
 
         st.markdown("""
-        <div style="font-size:0.78rem;color:#8890a8;line-height:1.6;margin-top:0.5rem;">
+        <div style="font-size:0.78rem;color:#7886C7;line-height:1.6;margin-top:0.5rem;">
             MICE embeddings tend to form tighter, more separable clusters by
             metadata category because field labels ("equipment system: hvac") give the
             transformer a stable anchor for each dimension. TEXT embeddings capture
@@ -192,7 +192,7 @@ def render():
             )
             st.plotly_chart(fig_heat, use_container_width=True)
             st.markdown("""
-            <div style="font-size:0.78rem;color:#8890a8;">
+            <div style="font-size:0.78rem;color:#7886C7;">
                 Each row = one work order. Each column = one of 768 embedding dimensions.
                 Red = positive activation · Blue = negative activation.
                 Similar work orders produce similar color patterns.
@@ -203,8 +203,8 @@ def _show_pca_explainer():
     """Static explainer shown when indexes are not built yet."""
     section_header("How Embeddings Work")
     st.markdown("""
-    <div style="background:#1a1d27;border:1px solid #2a2d3e;border-radius:6px;
-                padding:1.2rem;font-size:0.83rem;color:#8890a8;line-height:1.8;">
+    <div style="background:#FFFFFF;border:1px solid #A9B5DF;border-radius:6px;
+                padding:1.2rem;font-size:0.83rem;color:#7886C7;line-height:1.8;">
         <ol style="padding-left:1.2rem;">
             <li>Each work-order description is fed through BAAI/bge-base-en-v1.5.</li>
             <li>The model outputs a 768-dimensional float vector.</li>

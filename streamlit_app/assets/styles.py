@@ -20,14 +20,14 @@ html, body, [class*="css"] {
 
 /* ── Root palette ───────────────────────────────────────── */
 :root {
-    --bg:        #0f1117;
-    --surface:   #1a1d27;
-    --border:    #2a2d3e;
-    --accent:    #4f8ef7;
-    --accent2:   #38c96e;
-    --accent3:   #f7a94f;
-    --text:      #e4e6f0;
-    --muted:     #8890a8;
+    --bg:        #FFF2F2;
+    --surface:   #FFFFFF;
+    --border:    #A9B5DF;
+    --accent:    #2D336B;
+    --accent2:   #7886C7;
+    --accent3:   #7886C7;
+    --text:      #2D336B;
+    --muted:     #7886C7;
     --mono:      'IBM Plex Mono', monospace;
 }
 
@@ -39,7 +39,7 @@ html, body, [class*="css"] {
 
 /* ── Sidebar ────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: #12151f;
+    background: #FFFFFF;
     border-right: 1px solid var(--border);
 }
 
@@ -92,7 +92,7 @@ html, body, [class*="css"] {
     font-family: var(--mono);
     font-size: 0.65rem;
     background: var(--accent);
-    color: #fff;
+    color: #FFF2F2;
     padding: 0.15rem 0.5rem;
     border-radius: 3px;
     letter-spacing: 0.06em;
@@ -157,17 +157,17 @@ html, body, [class*="css"] {
     line-height: 1.8;
 }
 .strategy-card .pro  { color: var(--accent2); font-size: 0.75rem; }
-.strategy-card .con  { color: #e06c75;        font-size: 0.75rem; }
+.strategy-card .con  { color: #7886C7;        font-size: 0.75rem; }
 
 /* ── Code / repr blocks ─────────────────────────────────── */
 .repr-block {
-    background: #0d1117;
+    background: #FFF2F2;
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 0.85rem 1rem;
     font-family: var(--mono);
     font-size: 0.78rem;
-    color: #98c4fb;
+    color: #2D336B;
     white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.6;
@@ -315,7 +315,7 @@ def result_row(rank: int, woid: str, score: float, desc: str,
 
 
 def strategy_card(label: str, title: str, bullets: list,
-                  pros: list, cons: list, color: str = "#4f8ef7") -> None:
+                  pros: list, cons: list, color: str = "#2D336B") -> None:
     bullets_html = "".join(f"<li>{b}</li>" for b in bullets)
     pros_html = "".join(
         f'<div class="pro">✓ {p}</div>' for p in pros)

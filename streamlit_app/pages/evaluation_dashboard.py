@@ -31,16 +31,70 @@ METRIC_DISPLAY = {
 
 
 def _extract_strategy_row(data: dict, strategy: str) -> dict | None:
-    """Extract a flat metric dict for one strategy from eval_results.json."""
-    # Support two common JSON shapes:
-    # Shape 1: {strategy: {metric: value}}
-    # Shape 2: {metrics: {strategy: {metric: value}}}
+    """
+    Extract and normalize one strategy row from eval_results.json.
+
+    Supports BOTH:
+
+    Flat format:
+    {
+        "A": {
+            "recall_at_1": 0.1,
+            "recall_at_5": 0.2,
+            "recall_at_10": 0.3,
+            "mrr": 0.4,
+            "ndcg_at_10": 0.5,
+            "avg_latency_ms": 12.3
+        }
+    }
+
+    Nested format (current evaluation output):
+    {
+        "strategy": "A",
+        "mrr": 0.4,
+        "recall": {"1": 0.1, "5": 0.2, "10": 0.3},
+        "ndcg": {"1": 0.2, "5": 0.3, "10": 0.5},
+        "latency": {"mean_ms": 12.3}
+    }
+    """
+
+    row = None
+
+    # --------------------------------------------------
+    # Case 1: Flat format
+    # --------------------------------------------------
     if strategy in data:
-        return data[strategy]
-    metrics = data.get("metrics", data.get("results", {}))
-    if strategy in metrics:
-        return metrics[strategy]
-    return None
+        row = data[strategy]
+
+    else:
+        metrics = data.get("metrics", data.get("results", {}))
+        if strategy in metrics:
+            row = metrics[strategy]
+
+    if row is None:
+        return None
+
+    # --------------------------------------------------
+    # Already flat → return unchanged
+    # --------------------------------------------------
+    if "recall_at_10" in row:
+        return row
+
+    # --------------------------------------------------
+    # Nested → normalize into flat keys
+    # --------------------------------------------------
+    recall = row.get("recall", {})
+    ndcg = row.get("ndcg", {})
+    latency = row.get("latency", {})
+
+    return {
+        "recall_at_1": recall.get("1", 0),
+        "recall_at_5": recall.get("5", 0),
+        "recall_at_10": recall.get("10", 0),
+        "mrr": row.get("mrr", 0),
+        "ndcg_at_10": ndcg.get("10", 0),
+        "avg_latency_ms": latency.get("mean_ms", 0),
+    }
 
 
 def _demo_data() -> dict:
@@ -82,11 +136,27 @@ def render():
         )
         raw = _demo_data()
         demo_mode = True
-    else:
-        demo_mode = raw.get("_demo", False)
 
-    if demo_mode:
-        st.info("📊 Demo mode — values are illustrative, not from real runs.")
+    else:
+        # Handle list-based evaluation outputs
+        if isinstance(raw, list):
+            normalized = {}
+
+            for row in raw:
+                strategy = row.get("strategy")
+
+                if strategy:
+                    normalized[strategy] = row
+
+            raw = normalized
+            demo_mode = False
+
+        elif isinstance(raw, dict):
+            demo_mode = raw.get("_demo", False)
+
+        else:
+            st.error("Unsupported evaluation result format.")
+            return
 
     # Build per-strategy rows
     strategy_metrics = {}
@@ -111,19 +181,19 @@ def render():
         m = strategy_metrics[s]
         r10 = m.get("recall_at_10", 0)
         is_best = abs(r10 - best_recall) < 1e-6
-        color = STRATEGY_COLORS.get(s, "#8890a8")
+        color = STRATEGY_COLORS.get(s, "#7886C7")
         with col:
             st.markdown(f"""
-            <div style="background:#1a1d27;border:1px solid #2a2d3e;
+            <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                         border-top:3px solid {color};border-radius:6px;
                         padding:1rem;text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:1.4rem;
                             font-weight:600;color:{color};">{s}</div>
                 <div style="font-family:'IBM Plex Mono',monospace;font-size:2rem;
-                            color:#e4e6f0;font-weight:600;">{r10:.4f}</div>
-                <div style="font-size:0.68rem;color:#8890a8;
+                            color:#2D336B;font-weight:600;">{r10:.4f}</div>
+                <div style="font-size:0.68rem;color:#7886C7;
                             text-transform:uppercase;letter-spacing:0.06em;">Recall@10</div>
-                {"<div style='font-size:0.7rem;color:#38c96e;margin-top:0.2rem;'>★ Best</div>" if is_best else ""}
+                {"<div style='font-size:0.7rem;color:#7886C7;margin-top:0.2rem;'>★ Best</div>" if is_best else ""}
             </div>""", unsafe_allow_html=True)
 
     # ── MRR and latency row ──────────────────────────────────
@@ -134,25 +204,25 @@ def render():
         if s not in strategy_metrics:
             continue
         m = strategy_metrics[s]
-        color = STRATEGY_COLORS.get(s, "#8890a8")
+        color = STRATEGY_COLORS.get(s, "#7886C7")
         with c_mrr:
             st.markdown(f"""
-            <div style="background:#1a1d27;border:1px solid #2a2d3e;
+            <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                         border-radius:4px;padding:0.7rem;text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;
                             font-size:1.2rem;color:{color};">
                     {m.get('mrr', 0):.4f}</div>
-                <div style="font-size:0.65rem;color:#8890a8;text-transform:uppercase;
+                <div style="font-size:0.65rem;color:#7886C7;text-transform:uppercase;
                             letter-spacing:0.06em;">{s} · MRR</div>
             </div>""", unsafe_allow_html=True)
         with c_lat:
             st.markdown(f"""
-            <div style="background:#1a1d27;border:1px solid #2a2d3e;
+            <div style="background:#FFFFFF;border:1px solid #A9B5DF;
                         border-radius:4px;padding:0.7rem;text-align:center;">
                 <div style="font-family:'IBM Plex Mono',monospace;
-                            font-size:1.2rem;color:#38c96e;">
+                            font-size:1.2rem;color:#7886C7;">
                     {m.get('avg_latency_ms', 0):.1f}ms</div>
-                <div style="font-size:0.65rem;color:#8890a8;text-transform:uppercase;
+                <div style="font-size:0.65rem;color:#7886C7;text-transform:uppercase;
                             letter-spacing:0.06em;">{s} · Latency</div>
             </div>""", unsafe_allow_html=True)
 
@@ -213,7 +283,7 @@ def render():
         fig4 = latency_bar(lats)
         st.plotly_chart(fig4, use_container_width=True)
         st.markdown("""
-        <div style="font-size:0.78rem;color:#8890a8;line-height:1.6;">
+        <div style="font-size:0.78rem;color:#7886C7;line-height:1.6;">
             A and C are single-pass FAISS searches. B and B′ search an expanded pool
             (top_k × 20) before filtering — higher precision but higher latency.
         </div>""", unsafe_allow_html=True)
@@ -258,7 +328,7 @@ def render():
                 fig_gain = go.Figure(go.Histogram(
                     x=gains,
                     nbinsx=30,
-                    marker_color="#4f8ef7",
+                    marker_color="#2D336B",
                     opacity=0.85,
                 ))
                 fig_gain.update_layout(
@@ -266,8 +336,8 @@ def render():
                     title=dict(
                         text="Distribution of Metadata Gain (best_meta_recall − A_recall)",
                         font_size=12),
-                    xaxis=dict(title="Metadata Gain", gridcolor="#2a2d3e"),
-                    yaxis=dict(title="Query Count",   gridcolor="#2a2d3e"),
+                    xaxis=dict(title="Metadata Gain", gridcolor="#A9B5DF"),
+                    yaxis=dict(title="Query Count",   gridcolor="#A9B5DF"),
                     margin=dict(l=50, r=20, t=50, b=50),
                     height=300,
                 )
@@ -277,12 +347,12 @@ def render():
                 neg = (gains < -0.1).sum()
                 neu = len(gains) - pos - neg
                 st.markdown(f"""
-                <div style="font-size:0.8rem;color:#8890a8;line-height:1.8;">
-                    Metadata helps (+0.1): <strong style="color:#38c96e;">{pos}</strong>
+                <div style="font-size:0.8rem;color:#7886C7;line-height:1.8;">
+                    Metadata helps (+0.1): <strong style="color:#2D336B;">{pos}</strong>
                     &nbsp;·&nbsp;
-                    Metadata hurts (−0.1): <strong style="color:#e06c75;">{neg}</strong>
+                    Metadata hurts (−0.1): <strong style="color:#5C6BC0;">{neg}</strong>
                     &nbsp;·&nbsp;
-                    Neutral: <strong style="color:#8890a8;">{neu}</strong>
+                    Neutral: <strong style="color:#7886C7;">{neu}</strong>
                 </div>""", unsafe_allow_html=True)
 
         with st.expander("Sample per-query rows"):

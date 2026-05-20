@@ -15,17 +15,17 @@ import plotly.express as px
 
 # ── Shared theme ────────────────────────────────────────────────────────────
 THEME = dict(
-    paper_bgcolor="#0f1117",
-    plot_bgcolor="#0f1117",
-    font_color="#e4e6f0",
+    paper_bgcolor="#FFF2F2",
+    plot_bgcolor="#FFF2F2",
+    font_color="#2D336B",
     font_family="IBM Plex Mono, monospace"
 )
 
 STRATEGY_COLORS = {
-    "A":       "#4f8ef7",
-    "B":       "#38c96e",
-    "B_prime": "#f7a94f",
-    "C":       "#e06c75",
+    "A":       "#2D336B",   # deep navy  – primary accent
+    "B":       "#7886C7",   # medium blue – secondary accent
+    "B_prime": "#A9B5DF",   # soft blue   – soft accent
+    "C":       "#5C6BC0",   # indigo      – between accent2 and accent
 }
 
 STRATEGY_LABELS = {
@@ -58,7 +58,7 @@ def metric_bar_chart(
     """
     strategies = list(data.keys())
     values     = [data[s].get(metric_name, 0.0) for s in strategies]
-    colors     = [STRATEGY_COLORS.get(s, "#8890a8") for s in strategies]
+    colors     = [STRATEGY_COLORS.get(s, "#7886C7") for s in strategies]
     labels     = [STRATEGY_LABELS.get(s, s) for s in strategies]
 
     fig = go.Figure(
@@ -76,7 +76,7 @@ def metric_bar_chart(
             title=dict(text=title, font_size=13),
             yaxis=dict(
                 range=[0, max(values) * 1.25 if values else 1],
-                gridcolor="#2a2d3e",
+                gridcolor="#A9B5DF",
                 showgrid=True,
             ),
             xaxis=dict(showgrid=False),
@@ -106,7 +106,7 @@ def multi_metric_bar(
                 name=f"{STRATEGY_LABELS.get(s, s)} - {metric}",
                 x=[metric],
                 y=[row.get(metric, 0.0)],
-                marker_color=STRATEGY_COLORS.get(s, "#8890a8"),
+                marker_color=STRATEGY_COLORS.get(s, "#7886C7"),
                 legendgroup=s,
                 showlegend=(metric == metrics[0]),
                 text=[f"{row.get(metric, 0.0):.4f}"],
@@ -115,10 +115,10 @@ def multi_metric_bar(
     fig.update_layout(
         **_base_layout(
             barmode="group",
-            legend=dict(bgcolor="#1a1d27", bordercolor="#2a2d3e", borderwidth=1),
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#A9B5DF", borderwidth=1),
             margin=dict(l=40, r=20, t=30, b=40),
             height=360,
-            yaxis=dict(gridcolor="#2a2d3e", showgrid=True),
+            yaxis=dict(gridcolor="#A9B5DF", showgrid=True),
             xaxis=dict(showgrid=False),
         )
     )
@@ -145,15 +145,15 @@ def recall_at_k_lines(
             y=vals,
             mode="lines+markers",
             name=STRATEGY_LABELS.get(s, s),
-            line=dict(color=STRATEGY_COLORS.get(s, "#8890a8"), width=2),
+            line=dict(color=STRATEGY_COLORS.get(s, "#7886C7"), width=2),
             marker=dict(size=7),
         ))
     fig.update_layout(
         **_base_layout(
-            xaxis=dict(title="k", gridcolor="#2a2d3e", showgrid=True),
+            xaxis=dict(title="k", gridcolor="#A9B5DF", showgrid=True),
             yaxis=dict(title="Recall@k", range=[0, 1.05],
-                       gridcolor="#2a2d3e", showgrid=True),
-            legend=dict(bgcolor="#1a1d27", bordercolor="#2a2d3e", borderwidth=1),
+                       gridcolor="#A9B5DF", showgrid=True),
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#A9B5DF", borderwidth=1),
             margin=dict(l=50, r=20, t=30, b=50),
             height=340,
         )
@@ -203,9 +203,9 @@ def pca_scatter(
     fig.update_layout(
         **_base_layout(
             title=dict(text=title, font_size=13),
-            xaxis=dict(title=xlab, gridcolor="#2a2d3e", showgrid=True),
-            yaxis=dict(title=ylab, gridcolor="#2a2d3e", showgrid=True),
-            legend=dict(bgcolor="#1a1d27", bordercolor="#2a2d3e",
+            xaxis=dict(title=xlab, gridcolor="#A9B5DF", showgrid=True),
+            yaxis=dict(title=ylab, gridcolor="#A9B5DF", showgrid=True),
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#A9B5DF",
                         borderwidth=1, font_size=10),
             margin=dict(l=50, r=20, t=50, b=50),
             height=520,
@@ -227,7 +227,7 @@ def score_histogram(
         fig.add_trace(go.Histogram(
             x=scores,
             name=STRATEGY_LABELS.get(s, s),
-            marker_color=STRATEGY_COLORS.get(s, "#8890a8"),
+            marker_color=STRATEGY_COLORS.get(s, "#7886C7"),
             opacity=0.7,
             nbinsx=30,
         ))
@@ -235,9 +235,9 @@ def score_histogram(
         **_base_layout(
             barmode="overlay",
             title=dict(text=title, font_size=13),
-            xaxis=dict(title="Cosine Similarity Score", gridcolor="#2a2d3e"),
-            yaxis=dict(title="Count", gridcolor="#2a2d3e"),
-            legend=dict(bgcolor="#1a1d27", bordercolor="#2a2d3e", borderwidth=1),
+            xaxis=dict(title="Cosine Similarity Score", gridcolor="#A9B5DF"),
+            yaxis=dict(title="Count", gridcolor="#A9B5DF"),
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#A9B5DF", borderwidth=1),
             margin=dict(l=50, r=20, t=50, b=50),
             height=300,
         )
@@ -284,7 +284,7 @@ def latency_bar(latencies: Dict[str, float]) -> go.Figure:
     """Horizontal bar chart of retrieval latencies."""
     labels = [STRATEGY_LABELS.get(s, s) for s in latencies]
     values = list(latencies.values())
-    colors = [STRATEGY_COLORS.get(s, "#8890a8") for s in latencies]
+    colors = [STRATEGY_COLORS.get(s, "#7886C7") for s in latencies]
 
     fig = go.Figure(go.Bar(
         y=labels,
@@ -297,7 +297,7 @@ def latency_bar(latencies: Dict[str, float]) -> go.Figure:
     ))
     fig.update_layout(
         **_base_layout(
-            xaxis=dict(title="Latency (ms)", gridcolor="#2a2d3e"),
+            xaxis=dict(title="Latency (ms)", gridcolor="#A9B5DF"),
             yaxis=dict(showgrid=False),
             margin=dict(l=20, r=80, t=20, b=40),
             height=220,
