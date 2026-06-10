@@ -53,7 +53,7 @@ def get_model() -> SentenceTransformer:
 
         model = SentenceTransformer(
             EMBEDDING_MODEL,
-            device="cpu"
+            device="cuda"
         )
 
         actual_dim = model.get_sentence_embedding_dimension()
