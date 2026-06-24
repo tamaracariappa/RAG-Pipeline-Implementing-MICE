@@ -613,6 +613,56 @@ def _cosine_similarity() -> None:
 
 
 # ════════════════════════════════════════════════════════════
+# SECTION · SAMPLE EMBEDDING HEATMAPS
+# ════════════════════════════════════════════════════════════
+def _sample_heatmaps() -> None:
+    from charts.plotly_charts import vector_heatmap
+    from loaders.data_loader import sample_text_vectors, sample_mice_vectors
+
+    section_header("Sample Embedding Heatmaps", "randomly sampled from both indexes")
+
+    n_rows = st.slider("Number of work orders to display", 5, 50, 20,
+                       key="vs_sample_n")
+
+    tab_text, tab_mice = st.tabs(["📄  TEXT Embeddings", "🧬  MICE Embeddings"])
+
+    with tab_text:
+        with st.spinner("Sampling TEXT vectors…"):
+            text_vecs, _ = sample_text_vectors(n_rows)
+        if text_vecs is None:
+            st.info("TEXT index not available. Run `python main.py` to build it.")
+        else:
+            fig = vector_heatmap(
+                text_vecs[:n_rows], n_dims=20,
+                title=f"TEXT index · {n_rows} sampled work orders · first 20 of 768 dims"
+            )
+            fig.update_layout(height=380)
+            st.plotly_chart(fig, width='stretch', key="samp_text")
+            st.caption(
+                "Each row is one work order. Each column is one embedding dimension. "
+                "Hover a cell for its exact value. Strategies A · B · B′ search this index."
+            )
+
+    with tab_mice:
+        with st.spinner("Sampling MICE vectors…"):
+            mice_vecs, _ = sample_mice_vectors(n_rows)
+        if mice_vecs is None:
+            st.info("MICE index not available. Run `python main.py` to build it.")
+        else:
+            fig = vector_heatmap(
+                mice_vecs[:n_rows], n_dims=20,
+                title=f"MICE index · {n_rows} sampled work orders · first 20 of 768 dims"
+            )
+            fig.update_layout(height=380)
+            st.plotly_chart(fig, width='stretch', key="samp_mice")
+            st.caption(
+                "Same work orders as the TEXT tab, embedded using the MICE labelled template. "
+                "Compare colour patterns to see how metadata injection shifts the vector space. "
+                "Strategy C searches this index."
+            )
+
+
+# ════════════════════════════════════════════════════════════
 # MAIN RENDER
 # ════════════════════════════════════════════════════════════
 def render() -> None:
@@ -629,6 +679,9 @@ def render() -> None:
 
     st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
     _embedding_inspector()
+
+    st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
+    _sample_heatmaps()
 
     st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
     _cosine_similarity()
