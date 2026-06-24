@@ -56,7 +56,7 @@ def render():
 
     import pandas as pd
     df_modules = pd.DataFrame(MODULE_TABLE, columns=["Module", "Responsibility"])
-    st.dataframe(df_modules, use_container_width=True, hide_index=True, height=380)
+    st.dataframe(df_modules, width='stretch', hide_index=True, height=380)
 
     # ── Configuration ────────────────────────────────────────
     st.markdown("<br/>", unsafe_allow_html=True)
@@ -64,7 +64,7 @@ def render():
 
     df_cfg = pd.DataFrame(
         CONFIG_KEYS, columns=["Parameter", "Default", "Description"])
-    st.dataframe(df_cfg, use_container_width=True, hide_index=True)
+    st.dataframe(df_cfg, width='stretch', hide_index=True)
 
     # ── Dual-index architecture ──────────────────────────────
     st.markdown("<br/>", unsafe_allow_html=True)

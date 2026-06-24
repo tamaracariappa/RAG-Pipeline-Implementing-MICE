@@ -519,7 +519,7 @@ def render():
     try:
         sel_event = st.dataframe(
             table_df,
-            use_container_width=True,
+            width='stretch',
             height=600,
             column_config={
                 "WODescription": st.column_config.TextColumn("Description", width="large"),
@@ -540,7 +540,7 @@ def render():
     except Exception:
         st.dataframe(
             table_df,
-            use_container_width=True,
+            width='stretch',
             height=600,
             column_config={
                 "WODescription": st.column_config.TextColumn("Description", width="large"),
@@ -717,7 +717,7 @@ def render():
                     height=380,
                     showlegend=False,
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
         with dc2:
             st.markdown('<div class="de-chart-title">Top 10 Equipment Systems</div>',
@@ -739,7 +739,7 @@ def render():
                     height=380,
                     showlegend=False,
                 )
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width='stretch')
 
     except Exception:
         st.info("Charts unavailable \u2014 install plotly to enable distribution visualisations.")

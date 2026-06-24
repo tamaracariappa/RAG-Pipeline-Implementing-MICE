@@ -245,7 +245,7 @@ def render():
 
         if any(k_data.values()):
             fig = recall_at_k_lines(k_data)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         # Also as grouped bars
         records = [
@@ -259,7 +259,7 @@ def render():
         ]
         if records:
             fig2 = multi_metric_bar(records, ["Recall@1","Recall@5","Recall@10"])
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width='stretch')
 
     with chart_tab2:
         records2 = [
@@ -272,7 +272,7 @@ def render():
         ]
         if records2:
             fig3 = multi_metric_bar(records2, ["MRR", "NDCG@10"])
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width='stretch')
 
     with chart_tab3:
         from charts.plotly_charts import latency_bar
@@ -281,7 +281,7 @@ def render():
             for s in STRATEGY_ORDER if s in strategy_metrics
         }
         fig4 = latency_bar(lats)
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(fig4, width='stretch')
         st.markdown("""
         <div style="font-size:0.78rem;color:#7886C7;line-height:1.6;">
             A and C are single-pass FAISS searches. B and B′ search an expanded pool
@@ -308,7 +308,7 @@ def render():
         })
 
     df_table = pd.DataFrame(table_rows)
-    st.dataframe(df_table, use_container_width=True, hide_index=True)
+    st.dataframe(df_table, width='stretch', hide_index=True)
 
     # ── Per-query analysis ───────────────────────────────────
     per_query = load_per_query_csv()
@@ -341,7 +341,7 @@ def render():
                     margin=dict(l=50, r=20, t=50, b=50),
                     height=300,
                 )
-                st.plotly_chart(fig_gain, use_container_width=True)
+                st.plotly_chart(fig_gain, width='stretch')
 
                 pos = (gains > 0.1).sum()
                 neg = (gains < -0.1).sum()
@@ -356,7 +356,7 @@ def render():
                 </div>""", unsafe_allow_html=True)
 
         with st.expander("Sample per-query rows"):
-            st.dataframe(per_query.head(100), use_container_width=True, height=300)
+            st.dataframe(per_query.head(100), width='stretch', height=300)
     else:
         st.caption(
             "Per-query CSV not found. Run `python main.py` to generate "

@@ -51,7 +51,7 @@ def render_sidebar() -> str:
                 f"{icon}  {name}",
                 key=f"nav_{name}",
                 help=hint,
-                use_container_width=True,
+                width='stretch',
             ):
                 st.session_state.active_page = name
                 st.rerun()

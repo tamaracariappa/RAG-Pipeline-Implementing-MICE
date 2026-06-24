@@ -440,7 +440,7 @@ def render():
                     explained_var=te,
                 )
                 fig_t.update_layout(height=540)
-                st.plotly_chart(fig_t, use_container_width=True)
+                st.plotly_chart(fig_t, width='stretch')
             else:
                 st.info("TEXT index unavailable.")
 
@@ -468,7 +468,7 @@ def render():
                     explained_var=me,
                 )
                 fig_m.update_layout(height=540)
-                st.plotly_chart(fig_m, use_container_width=True)
+                st.plotly_chart(fig_m, width='stretch')
             else:
                 st.info("MICE index unavailable.")
 
