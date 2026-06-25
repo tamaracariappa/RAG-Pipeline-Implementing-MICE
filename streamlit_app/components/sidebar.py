@@ -1,19 +1,17 @@
 """
 components/sidebar.py - Navigation sidebar for FM-RAG platform.
+Updated navigation: 5 pages, Strategy Explainer removed,
+Architecture and Strategy Explainer merged into System & Retrieval Architecture.
 """
 
 import streamlit as st
 
-
 PAGES = [
-    ("🏠", "Overview",               "Pipeline walkthrough"),
-    ("📂", "Dataset Explorer",        "Inspect work orders & representations"),
-    ("🔬", "Embedding Visualization", "PCA scatter of vector space"),
-    ("⚡", "Live Query Testing",      "Run real retrieval across strategies"),
-    ("🗄️", "Vector Storage",          "How FAISS stores embeddings"),
-    ("🔀", "Retrieval Strategies",    "A / B / B′ / C explained"),
-    ("📊", "Evaluation Dashboard",    "Recall, MRR, latency metrics"),
-    ("🏗️", "System Architecture",     "Technical deep-dive"),
+    ("🏠", "App Overview",                   "Pipeline walkthrough and introduction"),
+    ("📂", "Dataset Explorer",               "Browse FMUCD records and representations"),
+    ("🗄️", "Vector Storage",                "How work orders become FAISS vectors"),
+    ("🏗️", "System & Retrieval Architecture","Strategies, pipeline, and configuration"),
+    ("📊", "Evaluation Dashboard",           "Recall, MRR, NDCG — research findings"),
 ]
 
 
@@ -36,9 +34,8 @@ def render_sidebar() -> str:
             unsafe_allow_html=True,
         )
 
-        # Track selection in session state
         if "active_page" not in st.session_state:
-            st.session_state.active_page = "Overview"
+            st.session_state.active_page = "App Overview"
 
         for icon, name, hint in PAGES:
             active = st.session_state.active_page == name
@@ -51,12 +48,11 @@ def render_sidebar() -> str:
                 f"{icon}  {name}",
                 key=f"nav_{name}",
                 help=hint,
-                width='stretch',
+                use_container_width=True,
             ):
                 st.session_state.active_page = name
                 st.rerun()
 
-        # System status footer
         st.markdown("---")
         st.markdown("""
         <div style="font-size:0.68rem;color:#7886C7;line-height:1.8;">
