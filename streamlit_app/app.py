@@ -51,6 +51,8 @@ elif page == "Vector Storage":
     from pages.vector_storage import render
 elif page == "System & Retrieval Architecture":
     from pages.architecture import render
+elif page == "Live Query":
+    from pages.live_query import render
 elif page == "Evaluation Dashboard":
     from pages.evaluation_dashboard import render
 else:

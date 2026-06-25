@@ -11,6 +11,7 @@ PAGES = [
     ("📂", "Dataset Explorer",               "Browse FMUCD records and representations"),
     ("🗄️", "Vector Storage",                "How work orders become FAISS vectors"),
     ("🏗️", "System & Retrieval Architecture","Strategies, pipeline, and configuration"),
+    ("🔍", "Live Query",                     "Query Investigation Workbench — run live retrieval"),
     ("📊", "Evaluation Dashboard",           "Recall, MRR, NDCG — research findings"),
 ]
 

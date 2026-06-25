@@ -244,44 +244,51 @@ def _render_retrieval_race(all_results: dict) -> None:
     min_lat = min(latencies.values())
     max_lat = max(latencies.values())
 
-    header_html = """
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;
-                gap:0.5rem;margin-bottom:0.4rem;">"""
+    # Build as plain string concatenation — no leading newline before the
+    # opening <div>, which prevents Streamlit's markdown parser from
+    # treating the block as a code/pre element and escaping the HTML.
+    html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.4rem;">'
 
     for s in ["A", "B", "B_prime", "C"]:
-        lat   = latencies.get(s, 0)
-        cnt   = counts.get(s, 0)
+        lat       = latencies.get(s, 0)
+        cnt       = counts.get(s, 0)
         color, label, _ = STRATEGY_META[s]
         display_s = s.replace("_prime", "′")
 
-        badge = ""
         if lat == min_lat and len(latencies) > 1:
-            badge = ('<span style="font-size:0.6rem;background:#E8F5E9;color:#2E7D32;'
-                     'border:1px solid #A5D6A7;border-radius:10px;padding:0.05rem 0.4rem;'
-                     'margin-left:0.3rem;">fastest</span>')
+            badge = (
+                '<span style="font-size:0.6rem;background:#E8F5E9;color:#2E7D32;'
+                'border:1px solid #A5D6A7;border-radius:10px;padding:0.05rem 0.4rem;'
+                'margin-left:0.3rem;">fastest</span>'
+            )
         elif lat == max_lat and len(latencies) > 1:
-            badge = ('<span style="font-size:0.6rem;background:#FFF3E0;color:#E65100;'
-                     'border:1px solid #FFCC80;border-radius:10px;padding:0.05rem 0.4rem;'
-                     'margin-left:0.3rem;">slowest</span>')
+            badge = (
+                '<span style="font-size:0.6rem;background:#FFF3E0;color:#E65100;'
+                'border:1px solid #FFCC80;border-radius:10px;padding:0.05rem 0.4rem;'
+                'margin-left:0.3rem;">slowest</span>'
+            )
+        else:
+            badge = ""
 
-        header_html += f"""
-        <div style="background:#FFFFFF;border:1px solid #A9B5DF;border-top:2px solid {color};
-                    border-radius:4px;padding:0.6rem 0.8rem;">
-            <div style="font-family:'IBM Plex Mono',monospace;font-size:0.9rem;
-                        font-weight:700;color:{color};">Strategy {display_s}</div>
-            <div style="font-size:0.68rem;color:#7886C7;margin-bottom:0.3rem;">{label}</div>
-            <div style="display:flex;align-items:baseline;gap:0.4rem;">
-                <span style="font-family:'IBM Plex Mono',monospace;font-size:0.85rem;
-                             color:#2D336B;font-weight:600;">{lat:.1f} ms</span>
-                {badge}
-            </div>
-            <div style="font-size:0.7rem;color:#7886C7;margin-top:0.15rem;">
-                {cnt} results returned
-            </div>
-        </div>"""
+        html += (
+            '<div style="background:#FFFFFF;border:1px solid #A9B5DF;'
+            'border-top:2px solid ' + color + ';border-radius:4px;padding:0.6rem 0.8rem;">'
+            '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:0.9rem;'
+            'font-weight:700;color:' + color + ';">Strategy ' + display_s + '</div>'
+            '<div style="font-size:0.68rem;color:#7886C7;margin-bottom:0.3rem;">' + label + '</div>'
+            '<div style="display:flex;align-items:baseline;gap:0.4rem;">'
+            '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:0.85rem;'
+            'color:#2D336B;font-weight:600;">' + f'{lat:.1f} ms' + '</span>'
+            + badge +
+            '</div>'
+            '<div style="font-size:0.7rem;color:#7886C7;margin-top:0.15rem;">'
+            + str(cnt) + ' results returned'
+            '</div>'
+            '</div>'
+        )
 
-    header_html += "</div>"
-    st.markdown(header_html, unsafe_allow_html=True)
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
     st.markdown(
         '<div style="font-size:0.7rem;color:#A9B5DF;margin-top:0.2rem;">'
