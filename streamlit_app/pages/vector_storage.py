@@ -304,7 +304,7 @@ def _embedding_inspector() -> None:
 
     event = st.dataframe(
         table_df,
-        width='stretch',
+        use_container_width=True,
         height=280,
         on_select="rerun",
         selection_mode="single-row",
@@ -492,7 +492,7 @@ def _embedding_inspector() -> None:
         if text_vec is not None:
             fig_t = _vec_heatmap(text_vec,
                                  "TEXT · 768 dims · 24 rows × 32 cols")
-            st.plotly_chart(fig_t, width='stretch', key="insp_text_heat")
+            st.plotly_chart(fig_t, use_container_width=True, key="insp_text_heat")
 
         # connector label
         st.markdown("""
@@ -523,7 +523,7 @@ def _embedding_inspector() -> None:
         if mice_vec is not None:
             fig_m = _vec_heatmap(mice_vec,
                                  "MICE · 768 dims · 24 rows × 32 cols")
-            st.plotly_chart(fig_m, width='stretch', key="insp_mice_heat")
+            st.plotly_chart(fig_m, use_container_width=True, key="insp_mice_heat")
 
         # connector label
         st.markdown("""
@@ -613,53 +613,209 @@ def _cosine_similarity() -> None:
 
 
 # ════════════════════════════════════════════════════════════
-# SECTION · SAMPLE EMBEDDING HEATMAPS
+# PCA HELPERS  (preserved from original embedding_viz.py)
 # ════════════════════════════════════════════════════════════
-def _sample_heatmaps() -> None:
+
+def _run_pca(vecs: np.ndarray):
+    from sklearn.decomposition import PCA
+    pca    = PCA(n_components=2, random_state=42)
+    coords = pca.fit_transform(vecs)
+    return coords, pca.explained_variance_ratio_.tolist()
+
+
+def _build_hover(meta: list) -> list:
+    texts = []
+    for m in meta:
+        woid  = m.get("WOID", "")
+        equip = m.get("equipment", "")
+        btype = m.get("Type", "")
+        desc  = m.get("WODescription", "")[:80]
+        texts.append(
+            f"<b>{woid}</b><br>"
+            f"Equipment: {equip}<br>"
+            f"Type: {btype}<br>"
+            f"<i>{desc}…</i>"
+        )
+    return texts
+
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def _cached_pca(track: str, n_samples: int, color_by: str):
+    from loaders.data_loader import sample_text_vectors, sample_mice_vectors
+    if track == "Text (Strategies A, B, B′)":
+        vecs, meta = sample_text_vectors(n_samples)
+    else:
+        vecs, meta = sample_mice_vectors(n_samples)
+    if vecs is None or meta is None or len(vecs) == 0:
+        return None
+    coords, expl = _run_pca(vecs)
+    labels = [m.get(color_by, "unknown") or "unknown" for m in meta]
+    hover  = _build_hover(meta)
+    return coords, labels, hover, expl
+
+
+# ════════════════════════════════════════════════════════════
+# SECTION · TEXT EMBEDDING HEATMAPS  (own slider, up to 50 rows)
+# ════════════════════════════════════════════════════════════
+def _heatmap_section() -> None:
     from charts.plotly_charts import vector_heatmap
     from loaders.data_loader import sample_text_vectors, sample_mice_vectors
 
-    section_header("Sample Embedding Heatmaps", "randomly sampled from both indexes")
+    section_header("Sample Embedding Heatmaps", "TEXT vs MICE — raw vector values")
 
-    n_rows = st.slider("Number of work orders to display", 5, 50, 20,
-                       key="vs_sample_n")
+    n = st.slider("Rows to display", 5, 50, 20, step=5, key="heat_n")
 
-    tab_text, tab_mice = st.tabs(["📄  TEXT Embeddings", "🧬  MICE Embeddings"])
+    with st.spinner("Sampling vectors…"):
+        text_vecs, _ = sample_text_vectors(n)
+        mice_vecs, _ = sample_mice_vectors(n)
 
-    with tab_text:
-        with st.spinner("Sampling TEXT vectors…"):
-            text_vecs, _ = sample_text_vectors(n_rows)
-        if text_vecs is None:
-            st.info("TEXT index not available. Run `python main.py` to build it.")
-        else:
+    if text_vecs is None and mice_vecs is None:
+        st.warning("FAISS indexes not available. Run `python main.py` to build them.")
+        return
+
+    cl, cr = st.columns(2, gap="large")
+
+    with cl:
+        st.markdown(
+            '<div style="font-size:0.85rem;font-weight:700;color:#2D336B;'
+            'text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.5rem;">'
+            'TEXT Index</div>',
+            unsafe_allow_html=True,
+        )
+        if text_vecs is not None:
             fig = vector_heatmap(
-                text_vecs[:n_rows], n_dims=20,
-                title=f"TEXT index · {n_rows} sampled work orders · first 20 of 768 dims"
+                text_vecs[:n], n_dims=20,
+                title=f"TEXT · {n} rows · first 20 of 768 dims",
             )
-            fig.update_layout(height=380)
-            st.plotly_chart(fig, width='stretch', key="samp_text")
-            st.caption(
-                "Each row is one work order. Each column is one embedding dimension. "
-                "Hover a cell for its exact value. Strategies A · B · B′ search this index."
-            )
-
-    with tab_mice:
-        with st.spinner("Sampling MICE vectors…"):
-            mice_vecs, _ = sample_mice_vectors(n_rows)
-        if mice_vecs is None:
-            st.info("MICE index not available. Run `python main.py` to build it.")
+            fig.update_layout(height=360)
+            st.plotly_chart(fig, use_container_width=True, key="heat_text")
+            st.caption("Each row = one work order. Each column = one dimension. "
+                       "Strategies A · B · B′ search this index.")
         else:
+            st.info("TEXT index unavailable.")
+
+    with cr:
+        st.markdown(
+            '<div style="font-size:0.85rem;font-weight:700;color:#5C6BC0;'
+            'text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.5rem;">'
+            'MICE Index</div>',
+            unsafe_allow_html=True,
+        )
+        if mice_vecs is not None:
             fig = vector_heatmap(
-                mice_vecs[:n_rows], n_dims=20,
-                title=f"MICE index · {n_rows} sampled work orders · first 20 of 768 dims"
+                mice_vecs[:n], n_dims=20,
+                title=f"MICE · {n} rows · first 20 of 768 dims",
             )
-            fig.update_layout(height=380)
-            st.plotly_chart(fig, width='stretch', key="samp_mice")
-            st.caption(
-                "Same work orders as the TEXT tab, embedded using the MICE labelled template. "
-                "Compare colour patterns to see how metadata injection shifts the vector space. "
-                "Strategy C searches this index."
-            )
+            fig.update_layout(height=360)
+            st.plotly_chart(fig, use_container_width=True, key="heat_mice")
+            st.caption("Strategy C searches this index. "
+                       "Compare colour patterns to see how metadata injection shifts values.")
+        else:
+            st.info("MICE index unavailable.")
+
+
+# ════════════════════════════════════════════════════════════
+# SECTION · PCA ANALYSIS  (own slider, own colour-by)
+# ════════════════════════════════════════════════════════════
+def _pca_section() -> None:
+    from charts.plotly_charts import pca_scatter
+    from loaders.data_loader import sample_text_vectors, sample_mice_vectors
+
+    section_header("PCA Embedding Analysis", "2D projection — TEXT vs MICE")
+
+    st.markdown(
+        '<div style="font-size:0.95rem;color:#46538C;margin-bottom:1rem;'
+        'max-width:820px;line-height:1.65;">'
+        'PCA projects the 768-dimensional embedding space into 2D. '
+        'Each point is one work order. Points that cluster together are '
+        'semantically similar and will be ranked closely by the retrieval engine.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    ctrl1, ctrl2 = st.columns([3, 1])
+    with ctrl1:
+        n = st.slider("Sample size", 100, 2000, 500, step=100, key="pca_n")
+    with ctrl2:
+        color_by = st.selectbox("Colour by", ["equipment", "Type"], key="pca_color")
+
+    with st.spinner("Computing PCA for both indexes…"):
+        t_pca = _cached_pca("Text (Strategies A, B, B′)", n, color_by)
+        m_pca = _cached_pca("MICE (Strategy C)",           n, color_by)
+
+    if t_pca is None and m_pca is None:
+        st.warning("FAISS indexes not available. Run `python main.py` to build them.")
+        return
+
+    cl, cr = st.columns(2, gap="large")
+
+    with cl:
+        st.markdown(
+            '<div style="font-size:0.85rem;font-weight:700;color:#2D336B;'
+            'text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.5rem;">'
+            'TEXT Embedding Space</div>',
+            unsafe_allow_html=True,
+        )
+        if t_pca:
+            tc, tl, th, te = t_pca
+            fig_t = pca_scatter(tc, tl, th,
+                                title=f"TEXT · coloured by {color_by}",
+                                explained_var=te)
+            fig_t.update_layout(height=440)
+            st.plotly_chart(fig_t, use_container_width=True, key="pca_text")
+            st.caption(f"Strategies A · B · B′  ·  "
+                       f"PC1 {te[0]:.1%} · PC2 {te[1]:.1%} variance explained.")
+        else:
+            st.info("TEXT index unavailable.")
+
+    with cr:
+        st.markdown(
+            '<div style="font-size:0.85rem;font-weight:700;color:#5C6BC0;'
+            'text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.5rem;">'
+            'MICE Embedding Space</div>',
+            unsafe_allow_html=True,
+        )
+        if m_pca:
+            mc, ml, mh, me = m_pca
+            fig_m = pca_scatter(mc, ml, mh,
+                                title=f"MICE · coloured by {color_by}",
+                                explained_var=me)
+            fig_m.update_layout(height=440)
+            st.plotly_chart(fig_m, use_container_width=True, key="pca_mice")
+            st.caption(f"Strategy C  ·  "
+                       f"PC1 {me[0]:.1%} · PC2 {me[1]:.1%} variance explained.")
+        else:
+            st.info("MICE index unavailable.")
+
+    # Shared interpretation panel
+    st.markdown(
+        '<div style="background:#FFFFFF;border:1px solid #A9B5DF;border-radius:8px;'
+        'padding:1rem 1.3rem;margin-top:0.6rem;">'
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;">'
+        '<div>'
+        '<div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.09em;'
+        'color:#2D336B;font-weight:700;margin-bottom:0.4rem;">Reading these charts</div>'
+        '<div style="font-size:0.88rem;color:#46538C;line-height:1.7;">'
+        'Each point is one work order projected to 2D via PCA. '
+        'Nearby points are semantically similar — the retrieval engine ranks them closely. '
+        'Tight, well-separated clusters by colour indicate the model has learned '
+        'meaningful representations for that metadata category.'
+        '</div>'
+        '</div>'
+        '<div style="border-left:1px solid #A9B5DF;padding-left:1.2rem;">'
+        '<div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.09em;'
+        'color:#2D336B;font-weight:700;margin-bottom:0.4rem;">TEXT vs MICE</div>'
+        '<div style="font-size:0.88rem;color:#46538C;line-height:1.7;">'
+        'MICE embeddings tend to form tighter, more separable clusters because '
+        'labelled metadata fields ("equipment system: hvac") give the model a '
+        'stable anchor. TEXT captures richer free-text semantics but metadata '
+        'boundaries may overlap across clusters.'
+        '</div>'
+        '</div>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+
 
 
 # ════════════════════════════════════════════════════════════
@@ -681,7 +837,10 @@ def render() -> None:
     _embedding_inspector()
 
     st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
-    _sample_heatmaps()
+    _heatmap_section()
+
+    st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
+    _pca_section()
 
     st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
     _cosine_similarity()
