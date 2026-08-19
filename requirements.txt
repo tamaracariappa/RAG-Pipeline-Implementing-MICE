@@ -1,9 +1,29 @@
 # FM RAG Pipeline - Python dependencies
 # Install with: pip install -r requirements.txt
+#
+# Verified on Python 3.11.0 / Windows with:
+#   torch 2.12.0+cpu, transformers 4.56.2, sentence-transformers 5.5.0,
+#   faiss-cpu 1.13.2, numpy 2.4.6, pandas 3.0.3, einops 0.8.x
 
 # Core ML / embeddings
-sentence-transformers>=2.7.0
+sentence-transformers>=5.0.0,<6.0.0
 torch>=2.1.0                      # CPU build is fine; GPU is faster for 2M rows
+
+# transformers is UPPER-BOUNDED to the 4.x line on purpose.
+#
+# jinaai/jina-embeddings-v3 ships custom modelling code (XLMRobertaLoRA) that
+# targets the transformers 4.x PreTrainedModel API.  Under transformers 5.8.1
+# loading it dies with:
+#     AttributeError: 'XLMRobertaLoRA' object has no attribute
+#                     'all_tied_weights_keys'
+# 4.56.2 loads jina-v3, bge-base and bge-m3 cleanly and is accepted by
+# sentence-transformers (which allows >=4.41,<6).
+# nvidia/NV-Embed-v2 officially pins transformers==4.42.4; staying on 4.x
+# keeps that downgrade path open, a 5.x pin would not.
+transformers>=4.50.0,<5.0.0
+
+# Required by the jinaai/jina-embeddings-v3 remote code (rotary embeddings).
+einops>=0.7.0
 
 # Vector database
 faiss-cpu
@@ -17,3 +37,11 @@ tqdm>=4.66.0
 
 # Evaluation metrics (cosine_similarity sanity checks in embedding_quality.py)
 scikit-learn>=1.4.0
+
+# NOT added on purpose:
+#   flash-attn  - listed by NV-Embed-v2 and optional for jina-v3, but it needs
+#                 CUDA plus a compiler toolchain and is neither installable nor
+#                 useful in a CPU-only environment.  Both models fall back to
+#                 the standard attention path without it.
+#   accelerate  - only needed for device_map / low_cpu_mem_usage sharded
+#                 loading, which no code path here uses.

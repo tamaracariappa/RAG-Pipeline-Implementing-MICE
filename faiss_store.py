@@ -1,15 +1,30 @@
+"""
+faiss_store.py - FAISS IndexFlatIP storage, one index pair per embedding model.
+
+Index type and normalisation are experimental controls and never vary:
+  faiss.IndexFlatIP over L2-normalised vectors (inner product == cosine).
+
+Only the dimension varies, because the embedding model varies.  Paths come
+from config and are already model-scoped (data/embeddings/<model_key>/…), so
+one model can never read, resume from, or overwrite another model's index.
+Every load and every insert re-validates:
+
+    registry dim == embedding dim == FAISS index dim
+"""
+
 import faiss
 import numpy as np
-import pandas as pd
 import pickle
 import os
 
 from config import (
+    ACTIVE_MODEL_KEY,
     EMBEDDING_DIM,
     TEXT_INDEX_PATH,
     MICE_INDEX_PATH,
     TEXT_METADATA_PATH,
     MICE_METADATA_PATH,
+    ensure_model_dir,
 )
 
 # -----------------------------
@@ -31,19 +46,33 @@ def create_index():
     return faiss.IndexFlatIP(EMBEDDING_DIM)
 
 
+def _assert_dim(actual: int, what: str) -> None:
+    if actual != EMBEDDING_DIM:
+        raise RuntimeError(
+            f"Dimension mismatch for model {ACTIVE_MODEL_KEY!r}: {what} has "
+            f"dim {actual}, registry declares {EMBEDDING_DIM}. Refusing to "
+            f"truncate, pad or project. Check that the index directory "
+            f"belongs to this model."
+        )
+
+
 # -----------------------------
 # SAVE / LOAD
 # -----------------------------
 
 def save_index(index, path):
+    ensure_model_dir()
     faiss.write_index(index, path)
 
 
 def load_index(path):
-    return faiss.read_index(path)
+    index = faiss.read_index(path)
+    _assert_dim(index.d, os.path.basename(path))
+    return index
 
 
 def save_metadata(metadata, path):
+    ensure_model_dir()
     with open(path, "wb") as f:
         pickle.dump(metadata, f)
 
@@ -88,7 +117,8 @@ def insert_text_batch(rows, embeddings):
     global text_index
     global text_metadata
 
-    embeddings = embeddings.astype(np.float32)
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    _assert_dim(embeddings.shape[1], "TEXT embedding batch")
 
     text_index.add(embeddings)
 
@@ -100,7 +130,8 @@ def insert_mice_batch(rows, embeddings):
     global mice_index
     global mice_metadata
 
-    embeddings = embeddings.astype(np.float32)
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    _assert_dim(embeddings.shape[1], "MICE embedding batch")
 
     mice_index.add(embeddings)
 

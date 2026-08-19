@@ -1,14 +1,27 @@
 """
-embedder.py - Singleton embedding model (BAAI/bge-base-en-v1.5).
+embedder.py - Singleton embedding model for the active registry entry.
 
-Responsibilities:
-  - Load the model once and reuse it (singleton pattern).
-  - Batch-encode arbitrary-length text lists into float32 vectors.
-  - Provide a query encoder that prepends the BGE instruction prefix.
+Public interface is unchanged - the rest of the application never learns
+which embedding model is active:
 
-BGE-v1.5 note:
-  For asymmetric retrieval tasks, BGE recommends prepending an instruction
-  to the *query* side only.  Document sides are encoded without a prefix.
+    embed_texts(texts, show_progress=False) -> (n, dim) float32
+    embed_query(query)                      -> (dim,)  float32
+
+All model-specific behaviour is data, not code: it comes from
+config.MODEL_SPEC (see the MODEL_REGISTRY docstring in config.py).  Each
+model's OFFICIAL retrieval encoding procedure is applied:
+
+  bge_base     query-side instruction prefix ("Represent this sentence …"),
+               documents encoded raw.  Unchanged from the original baseline.
+  bge_m3       no instruction on either side.
+  jina_v3      task LoRA adapters: retrieval.query / retrieval.passage.
+  nv_embed_v2  instruction supplied via `prompt=` (so sentence-transformers
+               excludes it from the pooled span), EOS appended to every
+               input, tokenizer.padding_side="right"; passages carry no
+               instruction.
+
+The document text itself (TEXT / MICE representations) is identical for
+every model - only the encoding procedure differs.
 """
 
 from __future__ import annotations
@@ -17,9 +30,17 @@ from typing import List
 import threading
 
 import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
 
-from config import EMBEDDING_MODEL, EMBEDDING_DIM, EMBED_BATCH_SIZE, NORMALIZE_EMBEDDINGS
+from config import (
+    ACTIVE_MODEL_KEY,
+    EMBEDDING_MODEL,
+    EMBEDDING_DIM,
+    EMBED_BATCH_SIZE,
+    MODEL_SPEC,
+    NORMALIZE_EMBEDDINGS,
+)
 
 # ─────────────────────────────────────────────────────────────
 # Singleton
@@ -27,8 +48,11 @@ from config import EMBEDDING_MODEL, EMBEDDING_DIM, EMBED_BATCH_SIZE, NORMALIZE_E
 _model: SentenceTransformer | None = None
 _model_lock = threading.Lock()
 
-# Instruction prefix recommended by BGE for retrieval queries
-_BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+def _device() -> str:
+    """CUDA when available, otherwise CPU.  Device is not an experimental
+    variable and must not hard-fail on CPU-only environments."""
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def get_model() -> SentenceTransformer:
@@ -37,6 +61,10 @@ def get_model() -> SentenceTransformer:
 
     Prevents Streamlit reruns from trying to initialize the
     SentenceTransformer multiple times simultaneously.
+
+    Raises:
+        RuntimeError: if the model's actual output dimension disagrees with
+                      the dimension declared in MODEL_REGISTRY.
     """
     global _model
 
@@ -49,19 +77,28 @@ def get_model() -> SentenceTransformer:
         if _model is not None:
             return _model
 
-        print(f"[Embedder] Loading model: {EMBEDDING_MODEL}")
+        device = _device()
+        print(f"[Embedder] Loading model: {EMBEDDING_MODEL} "
+              f"(key={ACTIVE_MODEL_KEY}, device={device})")
 
         model = SentenceTransformer(
             EMBEDDING_MODEL,
-            device="cuda"
+            device=device,
+            trust_remote_code=MODEL_SPEC["trust_remote_code"],
         )
+
+        if MODEL_SPEC["max_seq_length"]:
+            model.max_seq_length = MODEL_SPEC["max_seq_length"]
+        if MODEL_SPEC["padding_side"]:
+            model.tokenizer.padding_side = MODEL_SPEC["padding_side"]
 
         actual_dim = model.get_sentence_embedding_dimension()
 
         if actual_dim != EMBEDDING_DIM:
             raise RuntimeError(
-                f"Model dim {actual_dim} ≠ "
-                f"config EMBEDDING_DIM {EMBEDDING_DIM}"
+                f"Model {EMBEDDING_MODEL} produced dim {actual_dim} != "
+                f"registry dim {EMBEDDING_DIM} for key {ACTIVE_MODEL_KEY!r}. "
+                f"Fix MODEL_REGISTRY rather than truncating or padding."
             )
 
         print(f"[Embedder] Ready. Embedding dim: {actual_dim}")
@@ -72,14 +109,48 @@ def get_model() -> SentenceTransformer:
 
 
 # ─────────────────────────────────────────────────────────────
+# Internal encoding
+# ─────────────────────────────────────────────────────────────
+
+def _prepare(texts: List[str], prefix: str, append_eos: bool) -> List[str]:
+    """Apply the model's literal string decorations (prefix / EOS token)."""
+    if prefix:
+        texts = [prefix + t for t in texts]
+    if append_eos:
+        eos = get_model().tokenizer.eos_token or ""
+        if eos:
+            texts = [t + eos for t in texts]
+    return texts
+
+
+def _encode(texts: List[str], *, is_query: bool, show_progress: bool) -> np.ndarray:
+    model = get_model()
+
+    prefix = MODEL_SPEC["query_prefix"] if is_query else MODEL_SPEC["doc_prefix"]
+    kwargs = MODEL_SPEC["query_encode_kwargs"] if is_query else MODEL_SPEC["doc_encode_kwargs"]
+
+    prepared = _prepare(list(texts), prefix, MODEL_SPEC["append_eos"])
+
+    embeddings = model.encode(
+        prepared,
+        batch_size=EMBED_BATCH_SIZE,
+        show_progress_bar=show_progress,
+        normalize_embeddings=NORMALIZE_EMBEDDINGS,
+        convert_to_numpy=True,
+        **kwargs,
+    )
+    return np.asarray(embeddings, dtype=np.float32)
+
+
+# ─────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────
 
 def embed_texts(texts: List[str], show_progress: bool = False) -> np.ndarray:
     """
-    Encode a list of *document* strings.
+    Encode a list of *document* strings using the active model's official
+    document/passage procedure.
 
-    No instruction prefix is applied (documents are encoded as-is).
     Uses EMBED_BATCH_SIZE chunks to keep GPU/CPU memory bounded.
 
     Args:
@@ -90,23 +161,15 @@ def embed_texts(texts: List[str], show_progress: bool = False) -> np.ndarray:
         float32 ndarray of shape (len(texts), EMBEDDING_DIM).
         Vectors are L2-normalised when NORMALIZE_EMBEDDINGS is True.
     """
-    model = get_model()
-    embeddings = model.encode(
-        texts,
-        batch_size=EMBED_BATCH_SIZE,
-        show_progress_bar=show_progress,
-        normalize_embeddings=NORMALIZE_EMBEDDINGS,
-        convert_to_numpy=True,
-    )
-    return embeddings.astype(np.float32)
+    return _encode(texts, is_query=False, show_progress=show_progress)
 
 
 def embed_query(query: str) -> np.ndarray:
     """
-    Encode a single *query* string with the BGE instruction prefix.
+    Encode a single *query* string using the active model's official query
+    procedure (instruction prefix / task adapter / instruction prompt).
 
     Returns:
         float32 ndarray of shape (EMBEDDING_DIM,).
     """
-    prefixed = _BGE_QUERY_PREFIX + query
-    return embed_texts([prefixed])[0]
+    return _encode([query], is_query=True, show_progress=False)[0]

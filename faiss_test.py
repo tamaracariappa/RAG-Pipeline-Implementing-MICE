@@ -1,7 +1,18 @@
+"""
+faiss_test.py - five-document sanity check of the active embedding model.
+
+    python faiss_test.py --model bge_m3
+
+Uses a throwaway in-memory index; the real indexes are never touched.
+"""
+
 import numpy as np
 import faiss
 
+from config import ACTIVE_MODEL_KEY, EMBEDDING_DIM, EMBEDDING_MODEL
 from embedder import embed_texts, embed_query
+
+print(f"Model: {ACTIVE_MODEL_KEY} ({EMBEDDING_MODEL}, declared dim {EMBEDDING_DIM})")
 
 # -----------------------------------
 # SAMPLE DOCUMENTS
@@ -30,6 +41,11 @@ print("Shape:", doc_embeddings.shape)
 # -----------------------------------
 
 dim = doc_embeddings.shape[1]
+
+assert dim == EMBEDDING_DIM, (
+    f"Model emitted dim {dim}, registry declares {EMBEDDING_DIM} "
+    f"for {ACTIVE_MODEL_KEY!r}"
+)
 
 index = faiss.IndexFlatIP(dim)
 

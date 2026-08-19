@@ -1,7 +1,17 @@
 """
-retrieval.py - Four retrieval strategies + query routing integration.
+retrieval.py - Three retrieval strategies + query routing integration.
 
-Core strategies A / B / B' / C are UNCHANGED.
+  A - pure semantic retrieval over the TEXT index
+  B - explicit metadata filtering (candidate fetch, then metadata predicate)
+  C - MICE: metadata injected into the embedded representation (MICE index)
+
+Strategy B' was REMOVED.  Its implementation was the same candidate-retrieval
+plus Python metadata filter as B, so it was a duplicate condition rather than
+a genuinely distinct pre-filter strategy.  A deprecated one-call shim remains
+at the bottom of this file solely so the Streamlit app keeps importing; it is
+not part of the experiment and is not reachable from route_and_retrieve().
+
+Strategy semantics for A / B / C are otherwise UNCHANGED.
 route_and_retrieve() is the single integration point for the QueryRouter:
 it accepts a raw query, classifies it, selects the appropriate strategy,
 and returns results alongside the routing decision for downstream analysis.
@@ -28,7 +38,7 @@ from embedder import embed_query
 
 @dataclass
 class FilterConfig:
-    """Metadata constraints for Strategy B / B'. None = unconstrained."""
+    """Metadata constraints for Strategy B. None = unconstrained."""
     building_id:   Optional[str] = None
     building_type: Optional[str] = None
     equipment:     Optional[str] = None
@@ -142,25 +152,6 @@ def strategy_b(query, filter_config, top_k=DEFAULT_TOP_K):
 
 
 # ─────────────────────────────────────────────────────────────
-# Strategy B' - Pre-filter
-# ─────────────────────────────────────────────────────────────
-
-def strategy_b_prime(query, filter_config, top_k=DEFAULT_TOP_K):
-
-    results = strategy_a(query, top_k * POST_FILTER_MULTIPLIER)
-
-    filtered = [
-        r for r in results
-        if _python_filter(r, filter_config)
-    ]
-
-    for r in filtered:
-        r.strategy = "B_prime"
-
-    return filtered[:top_k]
-
-
-# ─────────────────────────────────────────────────────────────
 # Strategy C - MICE
 # ─────────────────────────────────────────────────────────────
 
@@ -210,8 +201,8 @@ def route_and_retrieve(
 
     Args:
         query:         Raw query string (no prefix applied here).
-        strategy:      One of 'A', 'B', 'B_prime', 'C'.
-        filter_config: Required for B / B'; ignored for A and C.
+        strategy:      One of 'A', 'B', 'C'.
+        filter_config: Required for B; ignored for A and C.
         top_k:         Number of results to return.
 
     Returns:
@@ -225,8 +216,21 @@ def route_and_retrieve(
         return strategy_a(query, top_k)
     if strategy == "B":
         return strategy_b(query, fc, top_k)
-    if strategy == "B_prime":
-        return strategy_b_prime(query, fc, top_k)
     if strategy == "C":
         return strategy_c(query, top_k)
-    raise ValueError(f"Unknown strategy: {strategy!r}. Choose A / B / B_prime / C.")
+    raise ValueError(f"Unknown strategy: {strategy!r}. Choose A / B / C.")
+
+
+# ─────────────────────────────────────────────────────────────
+# DEPRECATED - not part of the experiment
+# ─────────────────────────────────────────────────────────────
+
+def strategy_b_prime(query, filter_config, top_k=DEFAULT_TOP_K):
+    """DEPRECATED.  B' was removed: it performed the identical candidate
+    fetch + Python metadata filter as B.  Kept only so streamlit_app's
+    `from retrieval import … strategy_b_prime …` keeps working; excluded
+    from route_and_retrieve(), evaluation and analysis."""
+    results = strategy_b(query, filter_config, top_k)
+    for r in results:
+        r.strategy = "B_prime"
+    return results

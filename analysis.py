@@ -2,22 +2,29 @@
 analysis.py - Result analysis tools for the FM RAG experiment.
 
 Provides:
-  QueryComparison         - per-query results across all four strategies
+  QueryComparison         - per-query results across strategies A / B / C
   compare_all_strategies  - run all strategies on one query, return comparison
   find_metadata_impact    - cases where metadata strategies beat A by ≥ threshold
   compute_win_matrix      - pairwise strategy win/loss/tie counts
   print_query_comparison  - human-readable per-query table
   export_comparisons_csv  - full per-query CSV for offline analysis
   run_full_analysis       - convenience wrapper used in main.py
+  build_model_matrix      - cross-model MODEL × STRATEGY table + ΔMICE (C - A)
+  print_model_matrix      - render that table; `python analysis.py --compare`
+
+Strategy B' was removed from the experiment (it duplicated B).
 
 All functions are stateless and accept plain Python / dataclass inputs.
-No Milvus state is accessed here; results are passed in as arguments.
+Retrieval state is passed in as arguments, never read from a database here.
 """
 
 from __future__ import annotations
 
 import csv
+import glob
+import json
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -33,11 +40,18 @@ from retrieval import (
     RetrievalResult,
     strategy_a,
     strategy_b,
-    strategy_b_prime,
     strategy_c,
     deduplicate,
 )
-from config import DEFAULT_TOP_K, EVAL_TOP_K_LIST
+from config import (
+    ACTIVE_MODEL_KEY,
+    DEFAULT_TOP_K,
+    EMBEDDING_MODEL,
+    EMBEDDINGS_ROOT,
+    EVAL_TOP_K_LIST,
+    MODEL_REGISTRY,
+    STRATEGIES,
+)
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +64,7 @@ log = logging.getLogger(__name__)
 class QueryComparison:
     """
     Side-by-side retrieval results and metrics for one test case
-    across all four strategies.
+    across strategies A / B / C.
     """
     test_case:   TestCase
     results:     Dict[str, List[RetrievalResult]]   # strategy → results
@@ -64,16 +78,21 @@ class QueryComparison:
     @property
     def metadata_gain(self) -> float:
         """
-        Max recall improvement of metadata strategies (B, B', C) over A.
+        Max recall improvement of metadata strategies (B, C) over A.
         Positive = metadata helps; negative = metadata hurts.
         """
         a = self.recall.get("A", 0.0)
         best_meta = max(
-            self.recall.get("B",       0.0),
-            self.recall.get("B_prime", 0.0),
-            self.recall.get("C",       0.0),
+            self.recall.get("B", 0.0),
+            self.recall.get("C", 0.0),
         )
         return best_meta - a
+
+    @property
+    def delta_mice(self) -> float:
+        """ΔMICE = C - A: the isolated effect of metadata injection into the
+        embedded representation, for this query."""
+        return self.recall.get("C", 0.0) - self.recall.get("A", 0.0)
 
     @property
     def best_strategy(self) -> str:
@@ -96,7 +115,7 @@ def compare_all_strategies(
     k_for_metrics: int = DEFAULT_TOP_K,
 ) -> QueryComparison:
     """
-    Run all four strategies on *test_case* and return a QueryComparison.
+    Run strategies A / B / C on *test_case* and return a QueryComparison.
 
     Args:
         test_case:      The query + relevant_woids + filter_config.
@@ -106,10 +125,9 @@ def compare_all_strategies(
     fc = test_case.filter_config
 
     results: Dict[str, List[RetrievalResult]] = {
-        "A":       deduplicate(strategy_a(test_case.query_text, top_k)),
-        "B":       deduplicate(strategy_b(test_case.query_text, fc, top_k)),
-        "B_prime": deduplicate(strategy_b_prime(test_case.query_text, fc, top_k)),
-        "C":       deduplicate(strategy_c(test_case.query_text, top_k)),
+        "A": deduplicate(strategy_a(test_case.query_text, top_k)),
+        "B": deduplicate(strategy_b(test_case.query_text, fc, top_k)),
+        "C": deduplicate(strategy_c(test_case.query_text, top_k)),
     }
 
     rel   = test_case.relevant_woids
@@ -159,7 +177,7 @@ def find_metadata_impact(
     gain_threshold: float = 0.2,
 ) -> List[QueryComparison]:
     """
-    Return comparisons where any metadata strategy (B, B', C) improves
+    Return comparisons where any metadata strategy (B, C) improves
     Recall over A by at least *gain_threshold*.
 
     Sorted by metadata_gain descending.
@@ -182,7 +200,6 @@ def find_metadata_hurt(
         a = c.recall.get("A", 0.0)
         meta_max = max(
             c.recall.get("B", 0.0),
-            c.recall.get("B_prime", 0.0),
             c.recall.get("C", 0.0),
         )
         if a - meta_max >= loss_threshold:
@@ -200,7 +217,7 @@ def compute_win_matrix(
       {(A, B): {"wins": n, "losses": m, "ties": t}, ...}
       where "wins" = number of queries where A's recall > B's recall.
     """
-    strategies = ["A", "B", "B_prime", "C"]
+    strategies = list(STRATEGIES)
     matrix: Dict[Tuple[str, str], Dict[str, int]] = {}
 
     for i, s1 in enumerate(strategies):
@@ -233,7 +250,7 @@ def print_query_comparison(cmp: QueryComparison, show_hits: int = 3) -> None:
     print(f"Relevant WOIDs ({len(tc.relevant_woids)}): {list(tc.relevant_woids)[:5]} …")
     print(f"{'Strategy':<12} {'Recall':>8} {'MRR':>8} {'NDCG':>8} {'1stHit':>8}")
     print(f"{'─'*50}")
-    for s in ("A", "B", "B_prime", "C"):
+    for s in STRATEGIES:
         fh = cmp.first_hit.get(s)
         print(
             f"{s:<12}"
@@ -242,7 +259,9 @@ def print_query_comparison(cmp: QueryComparison, show_hits: int = 3) -> None:
             f"{cmp.ndcg.get(s, 0):>8.4f}"
             f"{'#'+str(fh) if fh else '—':>8}"
         )
-    print(f"\n  Metadata gain: {cmp.metadata_gain:+.4f}  |  Best: {cmp.best_strategy}")
+    print(f"\n  Metadata gain: {cmp.metadata_gain:+.4f}"
+          f"  |  ΔMICE (C-A): {cmp.delta_mice:+.4f}"
+          f"  |  Best: {cmp.best_strategy}")
     if show_hits:
         best_s   = cmp.best_strategy
         top_hits = cmp.results.get(best_s, [])[:show_hits]
@@ -295,10 +314,10 @@ def print_impact_summary(comparisons: List[QueryComparison]) -> None:
 def export_comparisons_csv(
     comparisons: List[QueryComparison],
     path: str,
-    strategies: Tuple[str, ...] = ("A", "B", "B_prime", "C"),
+    strategies: Tuple[str, ...] = STRATEGIES,
 ) -> None:
     """
-    Write one row per (query, strategy) to a CSV file.
+    Write one row per (model, query, strategy) to a CSV file.
     Suitable for statistical analysis in R / Python / Excel.
     """
     rows = []
@@ -306,6 +325,8 @@ def export_comparisons_csv(
         tc = cmp.test_case
         for s in strategies:
             rows.append({
+                "model":          ACTIVE_MODEL_KEY,
+                "model_id":       EMBEDDING_MODEL,
                 "description":    tc.description,
                 "query_type":     tc.query_type,
                 "equipment":      tc.metadata_group[0],
@@ -318,12 +339,14 @@ def export_comparisons_csv(
                 "ndcg":           round(cmp.ndcg.get(s, 0.0), 6),
                 "first_hit_rank": cmp.first_hit.get(s),
                 "metadata_gain":  round(cmp.metadata_gain, 6),
+                "delta_mice":     round(cmp.delta_mice, 6),
             })
 
     if not rows:
         log.warning("No comparisons to export.")
         return
 
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         writer.writeheader()
@@ -372,3 +395,142 @@ def run_full_analysis(
     export_comparisons_csv(comparisons, csv_path)
 
     return comparisons
+
+
+# ─────────────────────────────────────────────────────────────
+# Cross-model comparison  (MODEL × STRATEGY, and ΔMICE = C - A)
+# ─────────────────────────────────────────────────────────────
+
+def build_model_matrix(
+    root: str = EMBEDDINGS_ROOT,
+) -> Dict[str, Dict]:
+    """
+    Collect every per-model eval_results.json under *root*.
+
+    Returns:
+        {model_key: {"model_id": str, "dim": int, "n_queries": int,
+                     "metrics": {strategy: {"mrr": f, "recall": {k: f},
+                                            "ndcg": {k: f},
+                                            "latency_ms": f}},
+                     "delta_mice": {...}}}
+
+    Models that have not been evaluated yet are simply absent - nothing is
+    assumed or filled in.
+    """
+    out: Dict[str, Dict] = {}
+    for path in sorted(glob.glob(os.path.join(root, "*", "eval_results.json"))):
+        key = os.path.basename(os.path.dirname(path))
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except Exception as exc:
+            log.warning("Could not read %s: %s", path, exc)
+            continue
+
+        # Tolerate the pre-multi-model format (a bare list of strategies).
+        if isinstance(payload, list):
+            payload = {"strategies": payload}
+
+        metrics = {}
+        for entry in payload.get("strategies", []):
+            metrics[entry["strategy"]] = {
+                "mrr":        entry.get("mrr", 0.0),
+                "recall":     {int(k): v for k, v in entry.get("recall", {}).items()},
+                "ndcg":       {int(k): v for k, v in entry.get("ndcg", {}).items()},
+                "latency_ms": entry.get("latency", {}).get("mean_ms", 0.0),
+            }
+
+        out[key] = {
+            "model_id":   payload.get("model_id",
+                                      MODEL_REGISTRY.get(key, {}).get("model_id", key)),
+            "dim":        payload.get("embedding_dim",
+                                      MODEL_REGISTRY.get(key, {}).get("dim")),
+            "n_queries":  payload.get("n_queries"),
+            "metrics":    metrics,
+            "delta_mice": payload.get("delta_mice", {}),
+        }
+    return out
+
+
+def print_model_matrix(
+    matrix: Optional[Dict[str, Dict]] = None,
+    metric: str = "recall",
+    k: int = 10,
+) -> None:
+    """
+    Print the MODEL × STRATEGY table plus ΔMICE (C - A).
+
+    Args:
+        matrix: output of build_model_matrix(); collected if omitted.
+        metric: 'recall' | 'ndcg' | 'mrr'.
+        k:      cut-off used for recall / ndcg (ignored for mrr).
+    """
+    matrix = build_model_matrix() if matrix is None else matrix
+
+    if not matrix:
+        print(f"\nNo evaluated models found under {EMBEDDINGS_ROOT}.")
+        return
+
+    def value(entry: Dict, strategy: str) -> Optional[float]:
+        m = entry["metrics"].get(strategy)
+        if not m:
+            return None
+        if metric == "mrr":
+            return m["mrr"]
+        return m[metric].get(k)
+
+    label = "MRR" if metric == "mrr" else f"{metric.upper()}@{k}"
+    cols  = list(STRATEGIES)
+
+    hdr = f"{'Model':<14}{'Dim':>6}{'Queries':>9}"
+    for s in cols:
+        hdr += f"{s:>10}"
+    hdr += f"{'ΔMICE(C-A)':>12}"
+
+    print(f"\n{'='*len(hdr)}")
+    print(f"MODEL × STRATEGY - {label}")
+    print(f"{'='*len(hdr)}")
+    print(hdr)
+    print("─" * len(hdr))
+
+    # Registry order, so the table reads the same regardless of glob order.
+    for key in MODEL_REGISTRY:
+        entry = matrix.get(key)
+        if entry is None:
+            continue
+        row = f"{key:<14}{entry['dim'] or 0:>6}{entry['n_queries'] or 0:>9}"
+        for s in cols:
+            v = value(entry, s)
+            row += f"{v:>10.4f}" if v is not None else f"{'—':>10}"
+        a, c = value(entry, "A"), value(entry, "C")
+        row += f"{c - a:>+12.4f}" if (a is not None and c is not None) else f"{'—':>12}"
+        print(row)
+
+    print("─" * len(hdr))
+    missing = [k_ for k_ in MODEL_REGISTRY if k_ not in matrix]
+    if missing:
+        print(f"  Not yet evaluated: {', '.join(missing)}")
+    print()
+
+
+if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Cross-model analysis of the MICE retrieval experiment."
+    )
+    # --model is consumed by config at import time; declared here so argparse
+    # does not reject it.
+    ap.add_argument("--model", default=ACTIVE_MODEL_KEY,
+                    choices=list(MODEL_REGISTRY),
+                    help="active embedding model (affects nothing for --compare)")
+    ap.add_argument("--compare", action="store_true",
+                    help="print the MODEL × STRATEGY table and ΔMICE")
+    ap.add_argument("--metric", default="recall", choices=["recall", "ndcg", "mrr"])
+    ap.add_argument("--k", type=int, default=max(EVAL_TOP_K_LIST))
+    args = ap.parse_args()
+
+    if args.compare:
+        print_model_matrix(metric=args.metric, k=args.k)
+    else:
+        ap.print_help()

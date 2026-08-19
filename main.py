@@ -6,22 +6,33 @@ Stages:
   2. Preprocessing   (skipped if output exists)
   3. Cleaning        (skipped if output exists)
   4. FAISS ingest    (RESUMABLE - atomic chunk-based checkpoints)
-  5. Evaluation      - all four strategies, shared query set, fixed seed
+  5. Evaluation      - strategies A / B / C, shared query set, fixed seed
   6. Analysis        - per-query comparison, win matrix, metadata impact, CSV export
+
+MODEL SELECTION:
+  python main.py --model bge_base | bge_m3 | jina_v3 | nv_embed_v2
+
+  The key is resolved in config.py at import time and propagates automatically
+  to the embedder, the declared dimension, the FAISS index paths, the
+  checkpoint file and the evaluation output.  Preprocessing and cleaning are
+  model-independent and are shared - never re-run per model.
 
 ATOMIC CHECKPOINTING:
   - Tracks completed chunks (not rows) to avoid duplicates
   - Each chunk is fully inserted + persisted before marking as done
   - Power-cut safe: chunks are either 100% done or 0% done
-  - Delete data/ingestion_progress.json to restart from scratch
+  - Checkpoints are per model: data/embeddings/<model>/ingestion_progress.json
+  - Delete that file to restart that model's ingest from scratch
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
 import random
+import shutil
 import time
 
 import numpy as np
@@ -31,18 +42,25 @@ from tqdm import tqdm
 import cleaning
 import faiss_store
 import preprocessing
-from analysis import run_full_analysis
+from analysis import print_model_matrix, run_full_analysis
 from config import (
+    ACTIVE_MODEL_KEY,
     CHECKPOINT_INTERVAL,
     CLEANED_PATH,
     DATA_DIR,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
     EVAL_RESULTS_PATH,
     EVAL_SEED,
+    MODEL_DIR,
+    MODEL_REGISTRY,
+    PER_QUERY_CSV_PATH,
     PREPROCESSED_PATH,
     PROGRESS_FILE,
     RAW_DATASET_PATH,
     DEFAULT_TOP_K,
     TEXT_INDEX_PATH,
+    ensure_model_dir,
 )
 from embedder import embed_texts
 from embedding_builder import add_text_columns, iter_cleaned_chunks
@@ -93,13 +111,14 @@ def load_progress():
 
 def save_progress(completed_chunks, total_rows_processed, completed=False):
     """
-    Save ingestion progress to checkpoint file.
-    
+    Save ingestion progress to the ACTIVE MODEL's checkpoint file.
+
     Args:
         completed_chunks: Set of chunk indices that are fully processed
         total_rows_processed: Total number of rows completed
         completed: True when entire dataset is done
     """
+    ensure_model_dir()
     with open(PROGRESS_FILE, 'w') as f:
         json.dump({
             "completed_chunks": sorted(list(completed_chunks)),  # JSON needs list
@@ -110,10 +129,63 @@ def save_progress(completed_chunks, total_rows_processed, completed=False):
 
 
 def clear_progress():
-    """Delete progress file to restart from scratch."""
+    """Delete the active model's progress file to restart from scratch."""
     if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
-        log.info("Cleared ingestion progress - will start from scratch")
+        log.info("Cleared ingestion progress for %s - will start from scratch",
+                 ACTIVE_MODEL_KEY)
+
+
+# ─────────────────────────────────────────────────────────────
+# One-off migration of the pre-multi-model layout
+# ─────────────────────────────────────────────────────────────
+
+_LEGACY_FILES = [
+    "text.index",
+    "mice.index",
+    "text_metadata.pkl",
+    "mice_metadata.pkl",
+    "ingestion_progress.json",
+    "eval_results.json",
+    # data/per_query_analysis.csv is deliberately NOT migrated: the Streamlit
+    # dashboard hard-codes that path (loaders/data_loader.py), and the
+    # frontend is out of scope.  New runs write a per-model copy alongside
+    # the index instead.
+]
+
+
+def migrate_legacy_bge_base(dry_run: bool = False) -> None:
+    """
+    Move the original flat data/*.index + *.pkl artefacts into
+    data/embeddings/bge_base/ so the existing, already-ingested baseline is
+    reused instead of rebuilt.
+
+    Refuses to overwrite: if a destination file already exists the migration
+    aborts and nothing is moved.
+    """
+    dest = os.path.join(DATA_DIR, "embeddings", "bge_base")
+    present = [f for f in _LEGACY_FILES if os.path.exists(os.path.join(DATA_DIR, f))]
+
+    if not present:
+        log.info("No legacy artefacts in %s - nothing to migrate.", DATA_DIR)
+        return
+
+    clashes = [f for f in present if os.path.exists(os.path.join(dest, f))]
+    if clashes:
+        raise RuntimeError(
+            f"Refusing to migrate: {dest} already contains {clashes}. "
+            f"Move or delete them first - this tool never overwrites indexes."
+        )
+
+    log.info("Migrating %d legacy artefact(s) → %s", len(present), dest)
+    for name in present:
+        src = os.path.join(DATA_DIR, name)
+        log.info("  %s%s", name, "  (dry run)" if dry_run else "")
+        if not dry_run:
+            os.makedirs(dest, exist_ok=True)
+            shutil.move(src, os.path.join(dest, name))
+    if not dry_run:
+        log.info("Migration complete.")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -173,9 +245,12 @@ def _stage_ingest():
         log.info("FAISS ingestion already completed - skipping")
         return
 
-    log.info("Stage 4 - FAISS ingest (atomic chunk-based checkpointing) …")
-    
-    # Load or initialize FAISS stores
+    log.info("Stage 4 - FAISS ingest for %s (atomic chunk-based checkpointing) …",
+             ACTIVE_MODEL_KEY)
+
+    ensure_model_dir()
+
+    # Load or initialize FAISS stores (dimension is validated on load)
     faiss_store.initialize_stores()
 
     total_rows = _count_rows(CLEANED_PATH)
@@ -271,42 +346,76 @@ def _stage_evaluate_and_analyse() -> None:
 
     log.info("Stage 6 - Analysis …")
 
-    analysis_csv = os.path.join(
-        DATA_DIR,
-        "per_query_analysis.csv"
-    )
-
     run_full_analysis(
         test_cases=test_cases,
-        csv_path=analysis_csv,
+        csv_path=PER_QUERY_CSV_PATH,
         top_k=DEFAULT_TOP_K,
         print_n_examples=5,
     )
+
+    # Cross-model table, populated by whichever models have been evaluated.
+    print_model_matrix()
 
 # ─────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────
 
-def RAG_Pipeline() -> None:
+def RAG_Pipeline(skip_ingest: bool = False) -> None:
     print("=" * 60)
     print("FM RAG PIPELINE - Research Edition")
+    print(f"Model: {ACTIVE_MODEL_KEY}  ({EMBEDDING_MODEL}, dim {EMBEDDING_DIM})")
+    print(f"Store: {MODEL_DIR}")
     print("Atomic Chunk-Based Checkpointing (Duplicate-Safe)")
     print("=" * 60)
     _fix_seeds()
     t0 = time.time()
     os.makedirs(DATA_DIR, exist_ok=True)
+    ensure_model_dir()
 
     if not _check_dataset():
         return
 
+    # Model-independent - shared by every model, never re-run per model.
     _stage_preprocess()
     _stage_clean()
 
-    _stage_ingest()
+    if not skip_ingest:
+        _stage_ingest()
     _stage_evaluate_and_analyse()
 
     log.info("Done in %.1f s.", time.time() - t0)
 
 
+def _cli() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(
+        description="FM RAG pipeline - MICE across embedding models."
+    )
+    ap.add_argument(
+        "--model", default=ACTIVE_MODEL_KEY, choices=list(MODEL_REGISTRY),
+        help="embedding model key (resolved by config.py at import time)",
+    )
+    ap.add_argument("--reset-progress", action="store_true",
+                    help="delete this model's ingestion checkpoint first")
+    ap.add_argument("--skip-ingest", action="store_true",
+                    help="evaluate/analyse only; assume the index is built")
+    ap.add_argument("--migrate-legacy", action="store_true",
+                    help="move the flat data/*.index artefacts into "
+                         "data/embeddings/bge_base/ (never overwrites)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="with --migrate-legacy: report moves without doing them")
+    ap.add_argument("--compare", action="store_true",
+                    help="print the MODEL × STRATEGY table + ΔMICE and exit")
+    return ap.parse_args()
+
+
 if __name__ == "__main__":
-    RAG_Pipeline()
+    args = _cli()
+
+    if args.migrate_legacy:
+        migrate_legacy_bge_base(dry_run=args.dry_run)
+    elif args.compare:
+        print_model_matrix()
+    else:
+        if args.reset_progress:
+            clear_progress()
+        RAG_Pipeline(skip_ingest=args.skip_ingest)

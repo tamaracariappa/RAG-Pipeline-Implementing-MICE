@@ -1,6 +1,12 @@
 """
 evaluation.py - Research-grade evaluation for the FM RAG pipeline.
 
+Strategies evaluated: A, B, C (B' removed - it duplicated B).
+Every run is stamped with the active embedding model so results are
+identifiable by model × strategy × query.  The query set, relevance
+judgments, top-k and seeds are seed-determined and therefore IDENTICAL
+across models - the embedding model is the only variable.
+
 Replaces self-retrieval with a rigorous multi-document relevance model:
   - Relevance is defined by (equipment × type) topic grouping.
   - Two query sub-types ensure both signals are tested:
@@ -15,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import time
@@ -25,11 +32,15 @@ import numpy as np
 import pandas as pd
 
 from config import (
+    ACTIVE_MODEL_KEY,
     CLEANED_PATH,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
     EVAL_RESULTS_PATH,
     EVAL_SAMPLE_SIZE,
     EVAL_SEED,
     EVAL_TOP_K_LIST,
+    STRATEGIES,
 )
 from retrieval import (
     FilterConfig,
@@ -37,7 +48,6 @@ from retrieval import (
     deduplicate,
     strategy_a,
     strategy_b,
-    strategy_b_prime,
     strategy_c,
 )
 
@@ -356,8 +366,12 @@ def run_evaluation(
     seed: int                            = EVAL_SEED,
 ) -> List[StrategyMetrics]:
     """
-    Evaluate strategies A, B, B', C on the same query set.
-    All strategies share identical top_k, query text, and FilterConfig.
+    Evaluate strategies A, B, C on the same query set, with the currently
+    active embedding model.
+
+    All strategies share identical top_k, query text, and FilterConfig; the
+    query set and relevance judgments are seed-determined and therefore
+    identical across models.
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -366,25 +380,25 @@ def run_evaluation(
         log.info("Generating evaluation dataset …")
         test_cases = generate_test_cases(seed=seed)
 
-    log.info("Evaluating %d queries | k=%s", len(test_cases), top_k_list)
+    log.info("Model %s (%s) | evaluating %d queries | k=%s",
+             ACTIVE_MODEL_KEY, EMBEDDING_MODEL, len(test_cases), top_k_list)
     max_k = max(top_k_list)
 
-    def run_a(tc: TestCase)       -> List[RetrievalResult]:
+    def run_a(tc: TestCase) -> List[RetrievalResult]:
         return strategy_a(tc.query_text, top_k=max_k)
 
-    def run_b(tc: TestCase)       -> List[RetrievalResult]:
+    def run_b(tc: TestCase) -> List[RetrievalResult]:
         return strategy_b(tc.query_text, tc.filter_config, top_k=max_k)
 
-    def run_b_prime(tc: TestCase) -> List[RetrievalResult]:
-        return strategy_b_prime(tc.query_text, tc.filter_config, top_k=max_k)
-
-    def run_c(tc: TestCase)       -> List[RetrievalResult]:
+    def run_c(tc: TestCase) -> List[RetrievalResult]:
         return strategy_c(tc.query_text, top_k=max_k)
 
+    runners = {"A": run_a, "B": run_b, "C": run_c}
+
     all_metrics: List[StrategyMetrics] = []
-    for label, fn in [("A", run_a), ("B", run_b), ("B_prime", run_b_prime), ("C", run_c)]:
+    for label in STRATEGIES:
         log.info("Evaluating Strategy %s …", label)
-        m = _evaluate_one_strategy(label, fn, test_cases, top_k_list)
+        m = _evaluate_one_strategy(label, runners[label], test_cases, top_k_list)
         all_metrics.append(m)
 
     return all_metrics
@@ -408,7 +422,10 @@ def print_summary(
     hdr += f"  {'Rec_sem':>{W}}  {'Rec_con':>{W}}  {'Lat(ms)':>{W}}  {'p95(ms)':>{W}}"
 
     sep = "─" * len(hdr)
-    print(f"\n{'='*len(hdr)}\nEXPERIMENT SUMMARY\n{'='*len(hdr)}")
+    print(f"\n{'='*len(hdr)}")
+    print(f"EXPERIMENT SUMMARY - model {ACTIVE_MODEL_KEY} "
+          f"({EMBEDDING_MODEL}, dim {EMBEDDING_DIM})")
+    print(f"{'='*len(hdr)}")
     print(hdr)
     print(sep)
 
@@ -427,16 +444,27 @@ def print_summary(
     n     = all_metrics[0].n_queries if all_metrics else 0
     n_con = int(n * _CONSTRAINED_FRACTION)
     print(f"{'='*len(hdr)}")
-    print(f"  Queries: {n} total  ({n - n_con} semantic / {n_con} constrained)\n")
+    print(f"  Queries: {n} total  ({n - n_con} semantic / {n_con} constrained)")
+
+    # ΔMICE = C - A, the quantity the experiment exists to measure.
+    by_name = {m.strategy: m for m in all_metrics}
+    if "A" in by_name and "C" in by_name:
+        a, c = by_name["A"], by_name["C"]
+        print(f"  ΔMICE (C - A) @ MRR: {c.mrr_score - a.mrr_score:+.4f}")
+        for k in k_vals:
+            print(f"  ΔMICE (C - A) @ Recall@{k}: "
+                  f"{c.recall.get(k, 0) - a.recall.get(k, 0):+.4f}"
+                  f"   NDCG@{k}: {c.ndcg.get(k, 0) - a.ndcg.get(k, 0):+.4f}")
+    print()
 
 
 def save_summary_json(
     all_metrics: List[StrategyMetrics],
     path: str = EVAL_RESULTS_PATH,
 ) -> None:
-    payload = []
+    strategies = []
     for m in all_metrics:
-        payload.append({
+        strategies.append({
             "strategy":           m.strategy,
             "n_queries":          m.n_queries,
             "mrr":                round(m.mrr_score, 6),
@@ -452,6 +480,31 @@ def save_summary_json(
                 "p95_ms":  round(m.latency_p95_s  * 1000, 3),
             },
         })
+
+    by_name = {m.strategy: m for m in all_metrics}
+    delta_mice = {}
+    if "A" in by_name and "C" in by_name:
+        a, c = by_name["A"], by_name["C"]
+        delta_mice = {
+            "mrr": round(c.mrr_score - a.mrr_score, 6),
+            "recall": {str(k): round(c.recall.get(k, 0.0) - a.recall.get(k, 0.0), 6)
+                       for k in a.recall},
+            "ndcg":   {str(k): round(c.ndcg.get(k, 0.0)   - a.ndcg.get(k, 0.0), 6)
+                       for k in a.ndcg},
+        }
+
+    payload = {
+        "model":         ACTIVE_MODEL_KEY,
+        "model_id":      EMBEDDING_MODEL,
+        "embedding_dim": EMBEDDING_DIM,
+        "seed":          EVAL_SEED,
+        "top_k":         EVAL_TOP_K_LIST,
+        "n_queries":     all_metrics[0].n_queries if all_metrics else 0,
+        "delta_mice":    delta_mice,   # C - A
+        "strategies":    strategies,
+    }
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2)
     log.info("Results saved → %s", path)

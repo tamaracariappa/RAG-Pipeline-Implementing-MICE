@@ -9,13 +9,17 @@ Design constraints:
     can pass both directly to route_and_retrieve().
 
 Routing logic:
-  Query contains equipment AND/OR type tokens  →  Strategy B_prime (pre-filter)
-  Query contains only building_id pattern      →  Strategy B       (post-filter)
-  No metadata tokens detected                  →  Strategy A       (baseline)
-  Caller explicitly requests MICE              →  Strategy C
+  Query contains any metadata token
+  (equipment, type, or building_id)             →  Strategy B  (metadata filter)
+  No metadata tokens detected                   →  Strategy A  (baseline)
+  Caller explicitly requests MICE               →  Strategy C
 
-Note: The router is optional.  The four strategies can always be called
-directly (e.g., for controlled experiments where strategy is fixed).
+Strategy B' was removed from the experiment (it was a duplicate of B), so
+every metadata signal now routes to B.
+
+Note: The router is for INTERACTIVE use only.  Research evaluation never
+consults it - evaluation.py runs A, B and C explicitly on the same query
+set for every model.
 """
 
 from __future__ import annotations
@@ -73,10 +77,9 @@ class QueryAnalysis:
     Result of classifying a raw query string.
 
     recommended_strategy:
-      'A'       - no metadata detected
-      'B'       - building_id only (post-filter is safer for ID lookups)
-      'B_prime' - equipment and/or type detected (pre-filter is efficient)
-      'C'       - caller-requested; not set by the router automatically
+      'A' - no metadata detected
+      'B' - equipment, type and/or building_id detected → metadata filtering
+      'C' - caller-requested; not set by the router automatically
     """
     query:                   str
     signal:                  QuerySignal
@@ -84,7 +87,7 @@ class QueryAnalysis:
     extracted_type:          Optional[str]
     extracted_building_id:   Optional[str]
     filter_config:           FilterConfig
-    recommended_strategy:    str            # 'A' | 'B' | 'B_prime' | 'C'
+    recommended_strategy:    str            # 'A' | 'B' | 'C'
 
 
 # ─────────────────────────────────────────────────────────────
@@ -109,8 +112,7 @@ def classify_query(query: str) -> QueryAnalysis:
       1. Extract building_id (regex).
       2. Extract equipment term (vocabulary lookup).
       3. Extract type term (vocabulary lookup).
-      4. Route: MIXED → B_prime, EQUIPMENT/TYPE → B_prime,
-                BUILDING_ID → B, NONE → A.
+      4. Route: any metadata signal → B, NONE → A.
     """
     q_lower = query.lower()
 
@@ -131,10 +133,10 @@ def classify_query(query: str) -> QueryAnalysis:
 
     if has_equip and has_type:
         signal   = QuerySignal.MIXED
-        strategy = "B_prime"
+        strategy = "B"
     elif has_equip or has_type:
         signal   = QuerySignal.EQUIPMENT if has_equip else QuerySignal.TYPE
-        strategy = "B_prime"
+        strategy = "B"
     elif has_bid:
         signal   = QuerySignal.BUILDING_ID
         strategy = "B"

@@ -1,6 +1,22 @@
+"""
+embedding_quality.py - offline sanity checks over dumped embedding arrays.
+
+Operates on .npy dumps, which are now model-scoped:
+    data/embeddings/<model_key>/{text_only,metadata_embedded}.npy
+
+    python embedding_quality.py --model bge_m3
+
+No pipeline stage writes these dumps automatically; if they are absent the
+checks are skipped rather than raising.
+"""
+
+import os
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
+
+from config import ACTIVE_MODEL_KEY, EMBEDDING_MODEL, MODEL_DIR
 
 
 # -----------------------------
@@ -70,12 +86,18 @@ def average_similarity(embedding_path, sample_size=1000):
 # -----------------------------
 if __name__ == "__main__":
 
-    # TEXT-ONLY
-    sanity_check("data/text_only.npy")
-    retrieval_test("data/text_only.csv", "data/text_only.npy")
-    average_similarity("data/text_only.npy")
+    print(f"Model: {ACTIVE_MODEL_KEY} ({EMBEDDING_MODEL})")
+    print(f"Looking in: {MODEL_DIR}")
 
-    # METADATA EMBEDDED
-    sanity_check("data/metadata_embedded.npy")
-    retrieval_test("data/metadata_embedded.csv", "data/metadata_embedded.npy")
-    average_similarity("data/metadata_embedded.npy")
+    for stem in ("text_only", "metadata_embedded"):
+        npy = os.path.join(MODEL_DIR, f"{stem}.npy")
+        csv = os.path.join(MODEL_DIR, f"{stem}.csv")
+
+        if not os.path.exists(npy):
+            print(f"\nSkipping {stem}: {npy} not found.")
+            continue
+
+        sanity_check(npy)
+        if os.path.exists(csv):
+            retrieval_test(csv, npy)
+        average_similarity(npy)
