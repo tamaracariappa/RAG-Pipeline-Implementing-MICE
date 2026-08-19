@@ -27,6 +27,7 @@ every model - only the encoding procedure differs.
 from __future__ import annotations
 
 from typing import List
+import os
 import threading
 
 import numpy as np
@@ -50,9 +51,30 @@ _model_lock = threading.Lock()
 
 
 def _device() -> str:
-    """CUDA when available, otherwise CPU.  Device is not an experimental
-    variable and must not hard-fail on CPU-only environments."""
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    """
+    Encoding device.  Not an experimental variable - embeddings are the same
+    representation either way; the device only changes throughput.
+
+    MICE_DEVICE overrides auto-detection:
+        auto (default)  CUDA when available, otherwise CPU
+        cpu             force CPU
+        cuda / cuda:N   force GPU; raises if torch reports no CUDA device,
+                        rather than silently degrading to CPU
+    """
+    want = os.environ.get("MICE_DEVICE", "auto").strip().lower() or "auto"
+
+    if want == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+
+    if want.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError(
+            f"MICE_DEVICE={want!r} requested but torch reports no CUDA device "
+            f"(torch {torch.__version__}). This is a CPU-only torch build "
+            f"and/or there is no NVIDIA GPU. Install a CUDA build "
+            f"(https://pytorch.org/get-started/locally/) or use --device cpu."
+        )
+
+    return want
 
 
 def get_model() -> SentenceTransformer:
