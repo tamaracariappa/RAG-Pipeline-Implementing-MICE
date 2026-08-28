@@ -18,8 +18,6 @@ torch>=2.1.0                      # CPU build is fine; GPU is faster for 2M rows
 #                     'all_tied_weights_keys'
 # 4.56.2 loads jina-v3, bge-base and bge-m3 cleanly and is accepted by
 # sentence-transformers (which allows >=4.41,<6).
-# nvidia/NV-Embed-v2 officially pins transformers==4.42.4; staying on 4.x
-# keeps that downgrade path open, a 5.x pin would not.
 transformers>=4.50.0,<5.0.0
 
 # Required by the jinaai/jina-embeddings-v3 remote code (rotary embeddings).
@@ -39,9 +37,9 @@ tqdm>=4.66.0
 scikit-learn>=1.4.0
 
 # NOT added on purpose:
-#   flash-attn  - listed by NV-Embed-v2 and optional for jina-v3, but it needs
-#                 CUDA plus a compiler toolchain and is neither installable nor
-#                 useful in a CPU-only environment.  Both models fall back to
-#                 the standard attention path without it.
+#   flash-attn  - optional for jina-v3, but it needs CUDA plus a compiler
+#                 toolchain and is neither installable nor useful in a
+#                 CPU-only environment.  jina-v3 falls back to the standard
+#                 attention path without it.
 #   accelerate  - only needed for device_map / low_cpu_mem_usage sharded
 #                 loading, which no code path here uses.

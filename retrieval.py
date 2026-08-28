@@ -7,9 +7,8 @@ retrieval.py - Three retrieval strategies + query routing integration.
 
 Strategy B' was REMOVED.  Its implementation was the same candidate-retrieval
 plus Python metadata filter as B, so it was a duplicate condition rather than
-a genuinely distinct pre-filter strategy.  A deprecated one-call shim remains
-at the bottom of this file solely so the Streamlit app keeps importing; it is
-not part of the experiment and is not reachable from route_and_retrieve().
+a genuinely distinct pre-filter strategy.  No compatibility shim remains: the
+backend exposes A / B / C only.
 
 Strategy semantics for A / B / C are otherwise UNCHANGED.
 route_and_retrieve() is the single integration point for the QueryRouter:
@@ -219,18 +218,3 @@ def route_and_retrieve(
     if strategy == "C":
         return strategy_c(query, top_k)
     raise ValueError(f"Unknown strategy: {strategy!r}. Choose A / B / C.")
-
-
-# ─────────────────────────────────────────────────────────────
-# DEPRECATED - not part of the experiment
-# ─────────────────────────────────────────────────────────────
-
-def strategy_b_prime(query, filter_config, top_k=DEFAULT_TOP_K):
-    """DEPRECATED.  B' was removed: it performed the identical candidate
-    fetch + Python metadata filter as B.  Kept only so streamlit_app's
-    `from retrieval import … strategy_b_prime …` keeps working; excluded
-    from route_and_retrieve(), evaluation and analysis."""
-    results = strategy_b(query, filter_config, top_k)
-    for r in results:
-        r.strategy = "B_prime"
-    return results

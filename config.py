@@ -54,9 +54,6 @@ EMBEDDINGS_ROOT = os.path.join(DATA_DIR, "embeddings")
 #   doc_prefix          string concatenated to the document before encoding
 #   query_encode_kwargs extra kwargs passed to SentenceTransformer.encode()
 #   doc_encode_kwargs   for the query / document side respectively
-#   append_eos          append tokenizer.eos_token to every input
-#   max_seq_length      override SentenceTransformer.max_seq_length
-#   padding_side        override tokenizer.padding_side
 #   batch_size          encode batch size - a MEMORY knob only.  It does not
 #                       alter the representation and is not a quality-tuning
 #                       parameter; larger models simply do not fit at 128.
@@ -66,10 +63,6 @@ EMBEDDINGS_ROOT = os.path.join(DATA_DIR, "embeddings")
 #   bge_m3       no instruction on either side ("the BGE-M3 model no longer
 #                requires adding instructions to the queries").
 #   jina_v3      task-specific LoRA adapters: retrieval.query / retrieval.passage.
-#   nv_embed_v2  instruction passed via the `prompt=` argument so
-#                sentence-transformers excludes it from the pooled span; EOS
-#                token appended to every input; padding_side="right".
-#                Passages carry no instruction.
 
 MODEL_REGISTRY = {
     "bge_base": {
@@ -80,9 +73,6 @@ MODEL_REGISTRY = {
         "doc_prefix":          "",
         "query_encode_kwargs": {},
         "doc_encode_kwargs":   {},
-        "append_eos":          False,
-        "max_seq_length":      None,
-        "padding_side":        None,
         "batch_size":          128,
     },
     "bge_m3": {
@@ -93,9 +83,6 @@ MODEL_REGISTRY = {
         "doc_prefix":          "",
         "query_encode_kwargs": {},
         "doc_encode_kwargs":   {},
-        "append_eos":          False,
-        "max_seq_length":      None,
-        "padding_side":        None,
         "batch_size":          64,
     },
     "jina_v3": {
@@ -106,25 +93,7 @@ MODEL_REGISTRY = {
         "doc_prefix":          "",
         "query_encode_kwargs": {"task": "retrieval.query"},
         "doc_encode_kwargs":   {"task": "retrieval.passage"},
-        "append_eos":          False,
-        "max_seq_length":      None,
-        "padding_side":        None,
         "batch_size":          64,
-    },
-    "nv_embed_v2": {
-        "model_id":            "nvidia/NV-Embed-v2",
-        "dim":                 4096,
-        "trust_remote_code":   True,
-        "query_prefix":        "",
-        "doc_prefix":          "",
-        "query_encode_kwargs": {
-            "prompt": "Instruct: Given a question, retrieve passages that answer the question\nQuery: "
-        },
-        "doc_encode_kwargs":   {},
-        "append_eos":          True,
-        "max_seq_length":      32768,
-        "padding_side":        "right",
-        "batch_size":          2,
     },
 }
 
@@ -172,7 +141,13 @@ NORMALIZE_EMBEDDINGS = True      # L2-normalise → cosine == dot product
 # ─────────────────────────────────────────────────────────────
 # DATA LOADING  (controls peak RAM usage)
 # ─────────────────────────────────────────────────────────────
-CSV_CHUNK_SIZE = 10000          # rows per pandas read_csv chunk
+# Rows per pandas read_csv chunk.  Also the ingest's commit granularity: each
+# chunk is embedded, added and persisted as one unit, so a larger chunk means
+# proportionally fewer full-index rewrites (the ingest's dominant disk cost).
+# Changing this invalidates a PARTIAL ingestion_progress.json, because chunk
+# indices are recorded against it - main.py detects the mismatch and refuses
+# rather than silently mixing two chunk sizes.
+CSV_CHUNK_SIZE = 100000
 
 # -----------------------------
 # FAISS  (model-specific - dimensions differ, indexes must never be shared)

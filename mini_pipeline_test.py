@@ -4,7 +4,19 @@ mini_pipeline_test.py - small-sample smoke test for one embedding model.
     python mini_pipeline_test.py --model bge_base
     python mini_pipeline_test.py --model bge_m3
     python mini_pipeline_test.py --model jina_v3
-    python mini_pipeline_test.py --model nv_embed_v2
+
+GPU:
+    --device cuda      force GPU; fails loudly if torch reports no CUDA device
+    --device cuda:1    pick a specific GPU
+    --device cpu       force CPU
+    --device auto      (default) GPU when available, else CPU
+
+    --batch-size N     override the registry batch size.  Purely a memory knob
+                       - it does not change the representation.  A GPU takes a
+                       far larger batch than the CPU defaults.
+
+FAISS stays on the CPU: the project pins faiss-cpu, and the index type is an
+experimental control.  --device moves the encoder only.
 
 Verifies, on a small sample only:
   - the model loads
@@ -16,6 +28,7 @@ Verifies, on a small sample only:
   - a temporary FAISS IndexFlatIP works
   - strategies A / B / C all retrieve
   - the model-specific storage paths resolve and are writable
+  - the encoder actually landed on the requested device
 
 It NEVER touches the real indexes: FAISS state is built in memory, and the
 path check writes into a throwaway sub-directory that is removed afterwards.
@@ -28,16 +41,19 @@ import os
 import pickle
 import shutil
 import sys
+import time
 
 import faiss
 import numpy as np
 import pandas as pd
+import torch
 
 import faiss_store
 
 from config import (
     ACTIVE_MODEL_KEY,
     CLEANED_PATH,
+    EMBED_BATCH_SIZE,
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
     MODEL_DIR,
@@ -79,11 +95,28 @@ def check(name: str, ok: bool, detail: str = "") -> None:
         _failures.append(name)
 
 
+def _describe_gpus() -> str:
+    if not torch.cuda.is_available():
+        return (f"no CUDA device visible to torch {torch.__version__} "
+                f"({'CPU-only build' if '+cpu' in torch.__version__ else 'no GPU / driver'})")
+    parts = []
+    for i in range(torch.cuda.device_count()):
+        p = torch.cuda.get_device_properties(i)
+        parts.append(f"cuda:{i} {p.name} {p.total_memory / 1e9:.1f} GB")
+    return " | ".join(parts)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", default=ACTIVE_MODEL_KEY, choices=list(MODEL_REGISTRY),
                     help="embedding model key (resolved by config.py at import)")
     ap.add_argument("--n", type=int, default=200, help="sample rows (default 200)")
+    ap.add_argument("--device", default="auto",
+                    help="auto (default) | cpu | cuda | cuda:N. "
+                         "'cuda' fails loudly rather than falling back to CPU.")
+    ap.add_argument("--batch-size", type=int, default=None,
+                    help="override the registry encode batch size (memory knob "
+                         "only; does not change the representation)")
     args = ap.parse_args()
 
     if args.model != ACTIVE_MODEL_KEY:
@@ -93,18 +126,41 @@ def main() -> int:
               f"{ACTIVE_MODEL_KEY!r}. Unset MICE_EMBEDDING_MODEL.", file=sys.stderr)
         return 2
 
+    # Must be set before the first get_model() call - the embedder reads these
+    # when it lazily builds its singleton.
+    os.environ["MICE_DEVICE"] = args.device
+    if args.batch_size:
+        os.environ["MICE_BATCH_SIZE"] = str(args.batch_size)
+
+    batch = args.batch_size or EMBED_BATCH_SIZE
+
     print("=" * 70)
     print(f"MINI PIPELINE TEST - {ACTIVE_MODEL_KEY} ({EMBEDDING_MODEL})")
-    print(f"declared dim {EMBEDDING_DIM} | sample {args.n} rows")
+    print(f"declared dim {EMBEDDING_DIM} | sample {args.n} rows | batch {batch}")
+    print(f"requested device: {args.device}")
+    print(f"torch sees: {_describe_gpus()}")
     print("=" * 70)
 
     # ── 1. Model loads ────────────────────────────────────────
     print("\n1. Model load")
-    model = get_model()
+    try:
+        model = get_model()
+    except RuntimeError as exc:
+        # The embedder refuses to silently downgrade cuda -> cpu.
+        print(f"  [FAIL] model loads on requested device\n    {exc}")
+        return 1
+
     actual_dim = model.get_sentence_embedding_dimension()
     check("model loads", model is not None)
     check("model dim == registry dim", actual_dim == EMBEDDING_DIM,
           f"{actual_dim} vs {EMBEDDING_DIM}")
+
+    dev = str(next(model.parameters()).device)
+    check("encoder is on the requested device",
+          args.device == "auto" or dev.split(":")[0] == args.device.split(":")[0],
+          f"weights on {dev}, requested {args.device}")
+    if dev.startswith("cuda"):
+        torch.cuda.reset_peak_memory_stats()
 
     # ── 2. Representations unchanged ──────────────────────────
     print("\n2. Representations (model-independent control)")
@@ -121,9 +177,22 @@ def main() -> int:
     df = add_text_columns(df)
     rows = df.to_dict(orient="records")
 
+    t0 = time.perf_counter()
     text_embs = embed_texts(df["text_repr"].tolist(), show_progress=True)
     mice_embs = embed_texts(df["mice_repr"].tolist(), show_progress=True)
+    elapsed = time.perf_counter() - t0
     q_vec = embed_query("hvac cooling failure in research building")
+
+    n_texts = 2 * len(df)
+    rate = n_texts / elapsed if elapsed else 0.0
+    print(f"  throughput: {n_texts} texts in {elapsed:.1f}s = {rate:.1f} texts/s")
+    if rate:
+        # 2 representations x 2,536,923 rows for a full ingest of this model.
+        print(f"  => full corpus (5,073,846 texts) would take "
+              f"~{5_073_846 / rate / 3600:.1f} h at this rate")
+    if dev.startswith("cuda"):
+        print(f"  peak VRAM: {torch.cuda.max_memory_allocated() / 1e9:.2f} GB "
+              f"allocated, {torch.cuda.max_memory_reserved() / 1e9:.2f} GB reserved")
 
     check("document embeddings generated", text_embs.shape[0] == len(df),
           str(text_embs.shape))

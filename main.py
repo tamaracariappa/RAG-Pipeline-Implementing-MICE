@@ -10,17 +10,30 @@ Stages:
   6. Analysis        - per-query comparison, win matrix, metadata impact, CSV export
 
 MODEL SELECTION:
-  python main.py --model bge_base | bge_m3 | jina_v3 | nv_embed_v2
+  python main.py --model bge_base | bge_m3 | jina_v3
 
   The key is resolved in config.py at import time and propagates automatically
   to the embedder, the declared dimension, the FAISS index paths, the
   checkpoint file and the evaluation output.  Preprocessing and cleaning are
   model-independent and are shared - never re-run per model.
 
+TWO-PASS INGEST:
+  Exactly ONE model is ingested per invocation (the key config resolved), and
+  within that model exactly ONE representation is resident at a time:
+
+      Pass 1  TEXT  -> embed -> add -> persist text.index + text_metadata.pkl
+      (release)
+      Pass 2  MICE  -> embed -> add -> persist mice.index + mice_metadata.pkl
+
+  Holding one index instead of two halves peak resident memory - 7.26 GiB
+  rather than 14.52 GiB at 2.5M x 768, and 9.68 vs 19.36 GiB at dim 1024.
+
 ATOMIC CHECKPOINTING:
   - Tracks completed chunks (not rows) to avoid duplicates
-  - Each chunk is fully inserted + persisted before marking as done
-  - Power-cut safe: chunks are either 100% done or 0% done
+  - Each pass keeps its own chunk set and resumes independently
+  - persist_track() and save_progress() are adjacent statements, index first,
+    so a crash can only leave the index AHEAD of the checkpoint - never behind.
+    _reconcile() adopts such a chunk on the next run instead of re-embedding it
   - Checkpoints are per model: data/embeddings/<model>/ingestion_progress.json
   - Delete that file to restart that model's ingest from scratch
 """
@@ -47,6 +60,7 @@ from config import (
     ACTIVE_MODEL_KEY,
     CHECKPOINT_INTERVAL,
     CLEANED_PATH,
+    CSV_CHUNK_SIZE,
     DATA_DIR,
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
@@ -59,11 +73,14 @@ from config import (
     PROGRESS_FILE,
     RAW_DATASET_PATH,
     DEFAULT_TOP_K,
-    TEXT_INDEX_PATH,
     ensure_model_dir,
 )
 from embedder import embed_texts
-from embedding_builder import add_text_columns, iter_cleaned_chunks
+from embedding_builder import (
+    build_mice_representation,
+    build_text_representation,
+    iter_cleaned_chunks,
+)
 from evaluation import (
     generate_test_cases,
     print_summary,
@@ -93,39 +110,106 @@ def _fix_seeds(seed: int = EVAL_SEED) -> None:
 # ATOMIC CHUNK-BASED CHECKPOINT MANAGEMENT
 # ─────────────────────────────────────────────────────────────
 
-def load_progress():
-    """Load ingestion progress from checkpoint file."""
-    if os.path.exists(PROGRESS_FILE):
-        with open(PROGRESS_FILE, 'r') as f:
-            data = json.load(f)
-            # Ensure completed_chunks is a set for O(1) lookup
-            if "completed_chunks" in data:
-                data["completed_chunks"] = set(data["completed_chunks"])
-            return data
+# On-disk shape (one file per model):
+#
+#   {"chunk_size": 100000,
+#    "text": {"completed_chunks": [0, 1, 2], "rows": 300000, "done": false},
+#    "mice": {"completed_chunks": [],        "rows": 0,      "done": false},
+#    "completed": false,
+#    "timestamp": "2026-08-28 14:03:11"}
+#
+# Each pass owns its chunk set, so TEXT can be finished while MICE has not
+# started.  "completed" is derived (both passes done) and exists so a human -
+# and the old tooling - can read completion at a glance.
+
+
+def _blank_progress() -> dict:
     return {
-        "completed_chunks": set(),  # Set of chunk indices that are 100% done
-        "total_rows_processed": 0,
-        "completed": False
+        "chunk_size": CSV_CHUNK_SIZE,
+        "text": {"completed_chunks": set(), "rows": 0, "done": False},
+        "mice": {"completed_chunks": set(), "rows": 0, "done": False},
     }
 
 
-def save_progress(completed_chunks, total_rows_processed, completed=False):
+def load_progress() -> dict:
     """
-    Save ingestion progress to the ACTIVE MODEL's checkpoint file.
+    Load this model's ingestion progress.
 
-    Args:
-        completed_chunks: Set of chunk indices that are fully processed
-        total_rows_processed: Total number of rows completed
-        completed: True when entire dataset is done
+    Understands the pre-two-pass layout as well: that loop embedded TEXT and
+    MICE inside the same chunk, so a legacy chunk set applies to both passes.
     """
+    if not os.path.exists(PROGRESS_FILE):
+        return _blank_progress()
+
+    with open(PROGRESS_FILE, "r") as f:
+        data = json.load(f)
+
+    if "completed_chunks" in data:                      # legacy flat layout
+        chunks = set(data.get("completed_chunks", []))
+        rows   = int(data.get("total_rows_processed", 0))
+        done   = bool(data.get("completed", False))
+        return {
+            "chunk_size": int(data.get("chunk_size", 10000)),
+            "text": {"completed_chunks": set(chunks), "rows": rows, "done": done},
+            "mice": {"completed_chunks": set(chunks), "rows": rows, "done": done},
+        }
+
+    progress = _blank_progress()
+    progress["chunk_size"] = int(data.get("chunk_size", CSV_CHUNK_SIZE))
+    for track in faiss_store.TRACKS:
+        entry = data.get(track, {})
+        progress[track] = {
+            "completed_chunks": set(entry.get("completed_chunks", [])),
+            "rows": int(entry.get("rows", 0)),
+            "done": bool(entry.get("done", False)),
+        }
+    return progress
+
+
+def save_progress(progress: dict) -> None:
+    """Write the ACTIVE MODEL's checkpoint.  Sets are serialised as sorted lists."""
     ensure_model_dir()
-    with open(PROGRESS_FILE, 'w') as f:
-        json.dump({
-            "completed_chunks": sorted(list(completed_chunks)),  # JSON needs list
-            "total_rows_processed": total_rows_processed,
-            "completed": completed,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        }, f, indent=2)
+
+    payload = {
+        "chunk_size": progress["chunk_size"],
+        "completed":  all(progress[t]["done"] for t in faiss_store.TRACKS),
+        "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    for track in faiss_store.TRACKS:
+        state = progress[track]
+        payload[track] = {
+            "completed_chunks": sorted(state["completed_chunks"]),
+            "rows":             state["rows"],
+            "done":             state["done"],
+        }
+
+    with open(PROGRESS_FILE, "w") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _check_chunk_size(progress: dict) -> None:
+    """
+    Refuse to resume a checkpoint written at a different CSV_CHUNK_SIZE.
+
+    Chunk indices only mean something relative to the chunk size.  Resuming a
+    10k-row checkpoint under a 100k-row config would treat chunk 5 as rows
+    500k-600k when it actually held rows 50k-60k, skipping most of the corpus
+    and duplicating the rest.  A fully completed checkpoint is exempt: nothing
+    is left to resume, so the recorded size is only history.
+    """
+    recorded = progress.get("chunk_size", CSV_CHUNK_SIZE)
+    if recorded == CSV_CHUNK_SIZE:
+        return
+    if all(progress[t]["done"] for t in faiss_store.TRACKS):
+        return
+
+    raise RuntimeError(
+        f"Checkpoint for {ACTIVE_MODEL_KEY} was written with CSV_CHUNK_SIZE="
+        f"{recorded}, but config.py now says {CSV_CHUNK_SIZE}. Chunk indices are "
+        f"relative to the chunk size, so resuming would skip and duplicate rows. "
+        f"Rebuild this model's index with:\n"
+        f"    python main.py --model {ACTIVE_MODEL_KEY} --reset-progress"
+    )
 
 
 def clear_progress():
@@ -222,106 +306,153 @@ def _count_rows(path: str) -> int:
         return sum(1 for _ in fh) - 1
 
 
-def _stage_ingest():
+# One representation per pass.  Only the column being embedded is built, so a
+# pass never materialises the other representation's strings.
+_REPR_BUILDERS = {
+    "text": build_text_representation,
+    "mice": build_mice_representation,
+}
+
+
+def _reconcile(track: str, state: dict, index_ntotal: int) -> None:
     """
-    FAISS ingest with ATOMIC chunk-based checkpointing.
-    
-    Each chunk is processed atomically:
-      1. Load chunk
-      2. Generate embeddings
-      3. Insert into FAISS
-      4. Persist FAISS to disk
-      5. Mark chunk as complete
-      6. Save progress
-    
-    Power cuts can only happen between chunks, never during a chunk.
-    This prevents duplicate insertions.
+    Repair the crash window between persist_track() and save_progress().
+
+    Those two writes are adjacent but still two writes.  Because the index is
+    written FIRST, the only reachable inconsistency is an index that is ahead
+    of the checkpoint.  Chunks are processed in ascending order and each is
+    fully added before its persist, so index.ntotal always lands on a chunk
+    boundary: the extra rows are exactly the next chunk, and adopting it is
+    cheaper and safer than embedding it a second time.
     """
-    
-    # Check if already completed
-    progress = load_progress()
-    
-    if progress.get("completed", False):
-        log.info("FAISS ingestion already completed - skipping")
+    if index_ntotal == state["rows"]:
         return
 
-    log.info("Stage 4 - FAISS ingest for %s (atomic chunk-based checkpointing) …",
+    if index_ntotal < state["rows"]:
+        raise RuntimeError(
+            f"{track} index holds {index_ntotal} vectors but the checkpoint "
+            f"claims {state['rows']} rows. The index is behind its checkpoint, "
+            f"which the commit order cannot produce - the index file was "
+            f"probably replaced or truncated. Rebuild with:\n"
+            f"    python main.py --model {ACTIVE_MODEL_KEY} --reset-progress"
+        )
+
+    recovered  = index_ntotal - state["rows"]
+    next_chunk = max(state["completed_chunks"]) + 1 if state["completed_chunks"] else 0
+    state["completed_chunks"].add(next_chunk)
+    state["rows"] = index_ntotal
+    log.warning(
+        "Pass %s: index held %d row(s) past the checkpoint - chunk %d was "
+        "persisted before its progress write. Adopted it; not re-embedding.",
+        track, recovered, next_chunk,
+    )
+
+
+def _ingest_pass(track: str, total_rows: int, progress: dict) -> None:
+    """
+    Embed and index ONE representation over the whole corpus.
+
+    Only this track's index is resident; the other stays on disk.  The index
+    and its metadata are released at the end so the next pass starts clean.
+    """
+    state = progress[track]
+
+    if state["done"]:
+        log.info("Pass %-4s already complete (%d rows) - skipping.",
+                 track, state["rows"])
+        return
+
+    # mmap=False: this pass WRITES the index, and adding to a mapped index
+    # would copy the whole buffer into owned memory, undoing the reservation.
+    faiss_store.initialize_store(track, n_reserve=total_rows, mmap=False)
+    index = faiss_store.text_index if track == "text" else faiss_store.mice_index
+    _reconcile(track, state, index.ntotal)
+
+    if state["completed_chunks"]:
+        log.info("Pass %-4s RESUMING at %d / %d rows (%.1f%%).", track,
+                 state["rows"], total_rows, 100 * state["rows"] / total_rows)
+    else:
+        log.info("Pass %-4s starting fresh.", track)
+
+    build     = _REPR_BUILDERS[track]
+    completed = state["completed_chunks"]
+
+    with tqdm(total=total_rows, desc=f"Ingest {track}", unit="rows",
+              initial=state["rows"]) as pbar:
+
+        for chunk_idx, chunk in enumerate(iter_cleaned_chunks()):
+
+            if chunk_idx in completed:
+                continue
+
+            n_rows = len(chunk)
+
+            texts = chunk.apply(build, axis=1).tolist()
+            rows  = chunk.to_dict(orient="records")
+            faiss_store.insert_batch(track, rows, embed_texts(texts))
+            del texts, rows
+
+            # -- ATOMIC COMMIT -----------------------------------
+            # Index first, checkpoint immediately after, nothing between.
+            # This ordering makes the only possible crash state an index
+            # ahead of its checkpoint, which _reconcile() repairs. Writing
+            # the checkpoint first would instead lose rows silently.
+            faiss_store.persist_track(track)
+            completed.add(chunk_idx)
+            state["rows"] += n_rows
+            save_progress(progress)
+            # ----------------------------------------------------
+
+            pbar.update(n_rows)
+
+            if state["rows"] % CHECKPOINT_INTERVAL < n_rows:
+                log.info("  %s: %d / %d rows (%.1f%%)", track, state["rows"],
+                         total_rows, 100 * state["rows"] / total_rows)
+
+    state["done"] = True
+    save_progress(progress)
+    log.info("Pass %-4s complete: %d rows in %d chunks.",
+             track, state["rows"], len(completed))
+
+    faiss_store.release(track)
+
+
+def _stage_ingest():
+    """
+    FAISS ingest for the ONE active model - TEXT pass, then MICE pass.
+
+    Each pass walks the cleaned CSV independently and commits per chunk:
+      1. Read chunk                       (CSV_CHUNK_SIZE rows)
+      2. Build this pass's representation (the other is never built)
+      3. Embed
+      4. Add to that track's index
+      5. persist_track()  +  save_progress()   <- adjacent, index first
+    """
+    progress = load_progress()
+    _check_chunk_size(progress)
+
+    if all(progress[t]["done"] for t in faiss_store.TRACKS):
+        log.info("FAISS ingestion already completed for %s - skipping.",
+                 ACTIVE_MODEL_KEY)
+        return
+
+    log.info("Stage 4 - FAISS ingest for %s (two-pass, per-chunk atomic commit) …",
              ACTIVE_MODEL_KEY)
 
     ensure_model_dir()
 
-    # Load or initialize FAISS stores (dimension is validated on load)
-    faiss_store.initialize_stores()
-
+    # Count first: the row total pre-sizes the code buffer so each pass
+    # allocates once instead of realloc-and-copying on every growth step
+    # (see faiss_store.reserve_capacity).
     total_rows = _count_rows(CLEANED_PATH)
-    completed_chunks = progress.get("completed_chunks", set())
-    total_rows_processed = progress.get("total_rows_processed", 0)
-    
-    if completed_chunks:
-        log.info("🔄 RESUMING: %d chunks already completed (%d rows, %.1f%%)", 
-                 len(completed_chunks), total_rows_processed, 
-                 100 * total_rows_processed / total_rows)
-    else:
-        log.info("Starting fresh ingestion")
+    log.info("Corpus: %d rows, %d per chunk (%d chunks per pass).",
+             total_rows, CSV_CHUNK_SIZE, -(-total_rows // CSV_CHUNK_SIZE))
 
-    chunks_since_persist = 0
-    
-    with tqdm(total=total_rows, desc="Ingesting", unit="rows", 
-              initial=total_rows_processed) as pbar:
+    for track in faiss_store.TRACKS:
+        _ingest_pass(track, total_rows, progress)
 
-        for chunk_idx, chunk in enumerate(iter_cleaned_chunks()):
-            
-            # Skip if this chunk was already fully processed
-            if chunk_idx in completed_chunks:
-                continue
-            
-            chunk_size = len(chunk)
-            
-            # ─────────────────────────────────────────────────
-            # ATOMIC CHUNK PROCESSING
-            # ─────────────────────────────────────────────────
-            
-            # Step 1: Prepare data
-            chunk = add_text_columns(chunk)
-            rows = chunk.to_dict(orient="records")
-
-            # Step 2: Generate embeddings
-            text_embs = embed_texts(chunk["text_repr"].tolist())
-            mice_embs = embed_texts(chunk["mice_repr"].tolist())
-
-            # Step 3: Insert into FAISS (in-memory)
-            faiss_store.insert_text_batch(rows, text_embs)
-            faiss_store.insert_mice_batch(rows, mice_embs)
-
-            # Step 4: Persist to disk immediately (atomic commit)
-            faiss_store.persist()
-            
-            # Step 5: Mark chunk as complete
-            completed_chunks.add(chunk_idx)
-            total_rows_processed += chunk_size
-            chunks_since_persist += 1
-            
-            # Step 6: Save progress checkpoint
-            # (do this frequently to avoid losing progress metadata)
-            if chunks_since_persist >= 5 or chunk_idx % 10 == 0:  
-                # Save every 5 chunks or every 10th chunk
-                save_progress(completed_chunks, total_rows_processed, completed=False)
-                chunks_since_persist = 0
-            
-            # Update progress bar
-            pbar.update(chunk_size)
-            
-            # Log periodic checkpoints for visibility
-            if total_rows_processed % CHECKPOINT_INTERVAL < chunk_size:
-                log.info("💾 Progress: %d rows completed (%.1f%%)", 
-                         total_rows_processed, 
-                         100 * total_rows_processed / total_rows)
-
-    # Final save
-    log.info("✅ Ingestion complete - final save")
-    save_progress(completed_chunks, total_rows_processed, completed=True)
-    log.info("FAISS ingest complete: %d rows in %d chunks", 
-             total_rows_processed, len(completed_chunks))
+    log.info("FAISS ingest complete for %s: %d rows per index.",
+             ACTIVE_MODEL_KEY, progress["text"]["rows"])
 
 
 def _stage_evaluate_and_analyse() -> None:
@@ -329,7 +460,9 @@ def _stage_evaluate_and_analyse() -> None:
 
     _fix_seeds()
 
-    # Load FAISS indexes into RAM
+    # Memory-map both indexes (the default).  Evaluation only searches, so the
+    # vectors stay on disk and the OS pages in what the queries touch instead
+    # of resident-loading 14.52 GiB.
     faiss_store.initialize_stores()
 
     # Generate once; reuse for both evaluation and analysis

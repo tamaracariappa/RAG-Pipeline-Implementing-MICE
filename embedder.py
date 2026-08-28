@@ -15,10 +15,6 @@ model's OFFICIAL retrieval encoding procedure is applied:
                documents encoded raw.  Unchanged from the original baseline.
   bge_m3       no instruction on either side.
   jina_v3      task LoRA adapters: retrieval.query / retrieval.passage.
-  nv_embed_v2  instruction supplied via `prompt=` (so sentence-transformers
-               excludes it from the pooled span), EOS appended to every
-               input, tokenizer.padding_side="right"; passages carry no
-               instruction.
 
 The document text itself (TEXT / MICE representations) is identical for
 every model - only the encoding procedure differs.
@@ -77,6 +73,16 @@ def _device() -> str:
     return want
 
 
+def _batch_size() -> int:
+    """Encode batch size.  MICE_BATCH_SIZE overrides the registry value.
+    A memory/throughput knob only - it does not change the representation,
+    so it is not an experimental variable."""
+    override = os.environ.get("MICE_BATCH_SIZE", "").strip()
+    if override:
+        return int(override)
+    return EMBED_BATCH_SIZE
+
+
 def get_model() -> SentenceTransformer:
     """
     Thread-safe singleton model loader.
@@ -109,11 +115,6 @@ def get_model() -> SentenceTransformer:
             trust_remote_code=MODEL_SPEC["trust_remote_code"],
         )
 
-        if MODEL_SPEC["max_seq_length"]:
-            model.max_seq_length = MODEL_SPEC["max_seq_length"]
-        if MODEL_SPEC["padding_side"]:
-            model.tokenizer.padding_side = MODEL_SPEC["padding_side"]
-
         actual_dim = model.get_sentence_embedding_dimension()
 
         if actual_dim != EMBEDDING_DIM:
@@ -134,14 +135,10 @@ def get_model() -> SentenceTransformer:
 # Internal encoding
 # ─────────────────────────────────────────────────────────────
 
-def _prepare(texts: List[str], prefix: str, append_eos: bool) -> List[str]:
-    """Apply the model's literal string decorations (prefix / EOS token)."""
+def _prepare(texts: List[str], prefix: str) -> List[str]:
+    """Apply the model's literal string decoration (instruction prefix)."""
     if prefix:
         texts = [prefix + t for t in texts]
-    if append_eos:
-        eos = get_model().tokenizer.eos_token or ""
-        if eos:
-            texts = [t + eos for t in texts]
     return texts
 
 
@@ -151,11 +148,11 @@ def _encode(texts: List[str], *, is_query: bool, show_progress: bool) -> np.ndar
     prefix = MODEL_SPEC["query_prefix"] if is_query else MODEL_SPEC["doc_prefix"]
     kwargs = MODEL_SPEC["query_encode_kwargs"] if is_query else MODEL_SPEC["doc_encode_kwargs"]
 
-    prepared = _prepare(list(texts), prefix, MODEL_SPEC["append_eos"])
+    prepared = _prepare(list(texts), prefix)
 
     embeddings = model.encode(
         prepared,
-        batch_size=EMBED_BATCH_SIZE,
+        batch_size=_batch_size(),
         show_progress_bar=show_progress,
         normalize_embeddings=NORMALIZE_EMBEDDINGS,
         convert_to_numpy=True,
@@ -189,7 +186,7 @@ def embed_texts(texts: List[str], show_progress: bool = False) -> np.ndarray:
 def embed_query(query: str) -> np.ndarray:
     """
     Encode a single *query* string using the active model's official query
-    procedure (instruction prefix / task adapter / instruction prompt).
+    procedure (instruction prefix / task adapter).
 
     Returns:
         float32 ndarray of shape (EMBEDDING_DIM,).
