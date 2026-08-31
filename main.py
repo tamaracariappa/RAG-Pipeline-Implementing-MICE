@@ -41,6 +41,7 @@ ATOMIC CHECKPOINTING:
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import json
 import logging
 import os
@@ -88,10 +89,38 @@ from evaluation import (
     save_summary_json,
 )
 
+# ─────────────────────────────────────────────────────────────
+# Crash-visible logging
+# ─────────────────────────────────────────────────────────────
+# The ingest is a long unattended run on a remote box.  When the console host
+# dies - a dropped remote session, a driver reset, the OOM killer - stderr
+# goes with it and the run leaves no trace.  Both sinks below are on disk so
+# the post-mortem survives the terminal.
+#
+#   data/ingest.log  INFO-level progress, same format as the console
+#   data/crash.log   faulthandler's native-level dump: the Python traceback
+#                    for a segfault, abort() or std::terminate, i.e. exactly
+#                    the failures that never reach an except: block
+#
+# _CRASH_LOG is a module-level name on purpose.  faulthandler.enable() keeps
+# the file DESCRIPTOR, not the Python object; letting the object be collected
+# closes that descriptor and faulthandler then writes into a closed - or
+# worse, recycled - fd.  Holding the reference for the process lifetime is
+# what keeps the handler pointed at the right file.
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+_CRASH_LOG = open(os.path.join(DATA_DIR, "crash.log"), "a", encoding="utf-8")
+faulthandler.enable(_CRASH_LOG)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(os.path.join(DATA_DIR, "ingest.log"), encoding="utf-8"),
+    ],
 )
 log = logging.getLogger(__name__)
 
@@ -417,6 +446,46 @@ def _ingest_pass(track: str, total_rows: int, progress: dict) -> None:
     faiss_store.release(track)
 
 
+DISK_WARN_BYTES = 15 * 1024**3      # warn below 15 GiB free
+
+
+def _check_disk_space() -> None:
+    """
+    Warn - loudly - when the volume holding DATA_DIR is too tight for an ingest.
+
+    persist_track() rewrites the WHOLE index and the WHOLE metadata pickle
+    after every chunk, and faiss.write_index() writes to the destination path
+    directly.  A write that runs out of space mid-way therefore truncates the
+    live index rather than failing cleanly, and the run dies with a checkpoint
+    pointing at a file that no longer holds those vectors.  15 GiB is roughly
+    one full text.index plus its metadata plus room for the next rewrite.
+
+    This warns rather than aborts: the threshold is a rule of thumb, a smaller
+    corpus needs far less, and refusing to start would be the wrong call on a
+    run the operator knows will fit.
+    """
+    usage = shutil.disk_usage(DATA_DIR)
+    free_gib = usage.free / 1024**3
+
+    if usage.free >= DISK_WARN_BYTES:
+        log.info("Disk: %.1f GiB free on the volume holding %s.", free_gib, DATA_DIR)
+        return
+
+    log.critical("=" * 72)
+    log.critical("LOW DISK SPACE - %.1f GiB free, %.0f GiB recommended.",
+                 free_gib, DISK_WARN_BYTES / 1024**3)
+    log.critical("Volume holding: %s", DATA_DIR)
+    log.critical("")
+    log.critical("The ingest rewrites the entire index and metadata pickle after")
+    log.critical("EVERY chunk. faiss.write_index() writes in place, so running out")
+    log.critical("of space mid-write TRUNCATES the live index - the checkpoint will")
+    log.critical("then claim rows the index no longer holds, and the next run aborts")
+    log.critical("with 'the index is behind its checkpoint'.")
+    log.critical("")
+    log.critical("Free space before continuing, or expect a corrupt index.")
+    log.critical("=" * 72)
+
+
 def _stage_ingest():
     """
     FAISS ingest for the ONE active model - TEXT pass, then MICE pass.
@@ -439,6 +508,8 @@ def _stage_ingest():
     log.info("Stage 4 - FAISS ingest for %s (two-pass, per-chunk atomic commit) …",
              ACTIVE_MODEL_KEY)
 
+    _check_disk_space()
+
     ensure_model_dir()
 
     # Count first: the row total pre-sizes the code buffer so each pass
@@ -460,9 +531,10 @@ def _stage_evaluate_and_analyse() -> None:
 
     _fix_seeds()
 
-    # Memory-map both indexes (the default).  Evaluation only searches, so the
-    # vectors stay on disk and the OS pages in what the queries touch instead
-    # of resident-loading 14.52 GiB.
+    # Loads BOTH indexes.  mmap is requested but faiss ignores it for a flat
+    # index (see faiss_store.load_index), so this is the pipeline's real memory
+    # peak - higher than the ingest, which holds one index at a time:
+    #     dim  768 -> 14.52 GiB      dim 1024 -> 19.36 GiB
     faiss_store.initialize_stores()
 
     # Generate once; reuse for both evaluation and analysis
