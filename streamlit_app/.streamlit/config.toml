@@ -1,0 +1,18 @@
+# Theme for the MICE evaluation dashboard (streamlit_app/app.py).
+# Streamlit reads .streamlit/config.toml relative to the working directory, so
+# this applies when the app is launched from streamlit_app/. app.py also injects
+# the same palette as CSS, which keeps the theming correct from any directory.
+
+[theme]
+base                     = "light"
+primaryColor             = "#123F36"  # brand primary   - deep forest
+backgroundColor          = "#FAF7F0"  # page surface    - warm paper
+secondaryBackgroundColor = "#F2ECE0"  # panels, sidebar - derived from #E8DCC4
+textColor                = "#16241F"
+font                     = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

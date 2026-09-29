@@ -6,7 +6,12 @@ Streamlit-based visualization and demonstration system for the FM-RAG research p
 
 ```
 streamlit_app/
-├── app.py                    ← Entry point
+├── app.py                    ← Entry point: MICE evaluation dashboard
+│                               (one tab per model, A/B/C side by side, query explorer)
+├── platform_app.py           ← Entry point: the original multi-page platform
+│                               (streamlit run platform_app.py)
+├── test_app.py               ← Self-check for app.py (python test_app.py)
+├── .streamlit/config.toml    ← Theme (academic green/gold palette)
 ├── requirements_app.txt      ← App-specific deps
 ├── assets/
 │   └── styles.py             ← Global CSS, helper renderers
