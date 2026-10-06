@@ -88,19 +88,25 @@ Evaluation & Analysis
 
 ---
 
-# Embedding Model
+# Embedding Models
 
-Current embedding model:
+The pipeline is a multi-model experiment. Three models are built and evaluated
+independently, each with its own FAISS indexes and evaluation output under
+`data/embeddings/<model_key>/`.
 
-```python
-BAAI/bge-base-en-v1.5
-```
+| Key | Model | Dim | Encoding procedure |
+|---|---|---|---|
+| `bge_base` | `BAAI/bge-base-en-v1.5` | 768 | Query-side instruction prefix, documents raw |
+| `bge_m3` | `BAAI/bge-m3` | 1024 | No instruction on either side |
+| `jina_v3` | `jinaai/jina-embeddings-v3` | 1024 | Task LoRA adapters: `retrieval.query` / `retrieval.passage` |
 
-Embedding characteristics:
+Each procedure follows that model's official model card. The registry lives in
+`config.py`; select one for a pipeline run with the `MICE_EMBEDDING_MODEL`
+environment variable (default: `bge_base`).
 
-- 768-dimensional embeddings
+Shared characteristics:
+
 - L2-normalized vectors
-- Query instruction prefixing
 - GPU-compatible batching
 - FAISS cosine similarity retrieval
 
@@ -257,7 +263,14 @@ Features:
 ├── query_router.py
 ├── retrieval.py
 ├── requirements.txt
-└── README.md
+├── README.md
+├── scripts/
+│   └── precompute_pca.py
+└── streamlit_app/
+    ├── app.py
+    ├── test_app.py
+    ├── requirements_app.txt
+    └── .streamlit/config.toml
 ```
 
 ---
@@ -278,6 +291,8 @@ Features:
 | `analysis.py` | Per-query retrieval analysis |
 | `dataset_quality_check.py` | Dataset diagnostics |
 | `embedding_quality.py` | Embedding sanity checks |
+| `scripts/precompute_pca.py` | Writes the dashboard's offline 2-D projection |
+| `streamlit_app/app.py` | Evaluation dashboard (all three models) |
 
 ---
 
@@ -403,6 +418,33 @@ Then run:
 ```bash
 python main.py
 ```
+
+---
+
+# User Interface
+
+A single-page Streamlit dashboard compares all three embedding models side by
+side. It is read-only: it opens no FAISS index and runs no retrieval, reading
+only the artifacts a pipeline run leaves behind.
+
+```bash
+pip install -r streamlit_app/requirements_app.txt
+python scripts/precompute_pca.py          # one-off, writes the 2-D projection
+cd streamlit_app && streamlit run app.py
+```
+
+| Tab | What it shows |
+|---|---|
+| BGE Base / BGE-M3 / Jina v3 | One tab per model: strategy metric cards and metric comparisons |
+| Vector Inspector | Precomputed 2-D projection and vector statistics |
+| Query Explorer | Per-query grid, filterable by model, strategy and outcome |
+
+Reads per model from `data/embeddings/<model_key>/`: `eval_results.json`,
+`per_query_analysis.csv`, `pca_cache.json`, `vector_sample_50.json`. A missing
+file degrades that section to a warning rather than taking the app down, so the
+dashboard is usable when only some models have been built.
+
+Details and the self-check: [`streamlit_app/README.md`](streamlit_app/README.md).
 
 ---
 

@@ -1,90 +1,83 @@
-# FM-RAG Visualization Platform
+# MICE Evaluation Dashboard
 
-Streamlit-based visualization and demonstration system for the FM-RAG research pipeline.
+Single-page Streamlit dashboard for the FM-RAG retrieval experiment. It compares
+all three embedding models — `bge_base`, `bge_m3`, `jina_v3` — across retrieval
+strategies A, B and C.
 
 ## Structure
 
-```
+```text
 streamlit_app/
-├── app.py                    ← Entry point: MICE evaluation dashboard
-│                               (one tab per model, A/B/C side by side, query explorer)
-├── platform_app.py           ← Entry point: the original multi-page platform
-│                               (streamlit run platform_app.py)
-├── test_app.py               ← Self-check for app.py (python test_app.py)
-├── .streamlit/config.toml    ← Theme (academic green/gold palette)
-├── requirements_app.txt      ← App-specific deps
-├── assets/
-│   └── styles.py             ← Global CSS, helper renderers
-├── components/
-│   └── sidebar.py            ← Navigation sidebar
-├── pages/
-│   ├── overview.py           ← Landing page / pipeline overview
-│   ├── dataset_explorer.py   ← Work order inspector + repr comparison
-│   ├── embedding_viz.py      ← PCA scatter of FAISS vector spaces
-│   ├── live_query.py         ← Live retrieval across all 4 strategies
-│   ├── vector_storage.py     ← How FAISS stores embeddings
-│   ├── strategy_explainer.py ← A / B / B′ / C explained visually
-│   ├── evaluation_dashboard.py ← Metrics from eval_results.json
-│   └── architecture.py       ← Technical deep-dive
-├── charts/
-│   └── plotly_charts.py      ← Reusable Plotly figure builders
-├── loaders/
-│   ├── data_loader.py        ← Cached wrappers for CSV, FAISS, eval JSON
-│   └── retrieval_runner.py   ← Calls existing retrieval.py strategies
-└── utils/                    ← (reserved for future utilities)
+├── app.py                 Entry point. The whole dashboard.
+├── test_app.py            Self-check for app.py (python test_app.py)
+├── .streamlit/config.toml Theme
+└── requirements_app.txt   App-only dependencies
 ```
 
 ## Setup
 
-1. Install the main project dependencies first:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt                   # from the project root
+pip install -r streamlit_app/requirements_app.txt
+```
 
-2. Install Streamlit app dependencies:
-   ```bash
-   pip install -r streamlit_app/requirements_app.txt
-   ```
+## Run
 
-3. Run the FM-RAG pipeline to build FAISS indexes:
-   ```bash
-   python main.py
-   ```
+```bash
+cd streamlit_app
+streamlit run app.py
+```
 
-4. Launch the Streamlit app from the **project root** (not inside `streamlit_app/`):
-   ```bash
-   streamlit run streamlit_app/app.py
-   ```
+## Data it reads
 
-## Important: Run from Project Root
+Per model key, from `data/embeddings/<model_key>/`:
 
-The app must be launched from the directory that contains `retrieval.py`, `config.py`,
-`faiss_store.py`, etc. The `PROJECT_ROOT` is set automatically in `app.py`.
+| File | Contents |
+|---|---|
+| `eval_results.json` | Aggregate metrics per strategy |
+| `per_query_analysis.csv` | One row per (query, strategy) |
+| `pca_cache.json` | Static 2-D projection, written offline |
+| `vector_sample_50.json` | 50 rows with their raw vectors |
 
-## Graceful Degradation
+Produce the last two with:
 
-All pages handle missing data gracefully:
+```bash
+python scripts/precompute_pca.py              # all three models
+python scripts/precompute_pca.py --models bge_m3
+```
 
-- **FAISS indexes not built** → shows explanatory placeholder, no crash
-- **eval_results.json missing** → shows demo/synthetic data with a warning banner
-- **Cleaned CSV missing** → shows a "run the pipeline first" message
+The dashboard never opens a FAISS index. The projection is precomputed, so the
+app starts instantly and stays inside a small memory budget.
 
-## Pages
+## Tabs
 
-| Page | What it shows |
-|------|--------------|
-| Overview | Pipeline flow, strategy summary, quick stats |
-| Dataset Explorer | Work orders + TEXT vs MICE representation comparison |
-| Embedding Visualization | PCA 2D scatter of real FAISS vectors |
-| Live Query Testing | Run all 4 strategies, compare results + latency |
-| Vector Storage | How FAISS stores and retrieves embeddings |
-| Retrieval Strategies | A / B / B′ / C with flow diagrams |
-| Evaluation Dashboard | Recall@k, MRR, NDCG, latency from real eval output |
-| System Architecture | Module reference, config, checkpointing, future plans |
+| Tab | What it shows |
+|---|---|
+| BGE Base / BGE-M3 / Jina v3 | One tab per model: strategy metric cards and ECharts metric comparisons |
+| Vector Inspector | Precomputed 2-D projection and vector statistics for a chosen model |
+| Query Explorer | AgGrid over `per_query_analysis.csv` — filter by model, strategy and outcome |
 
-## Performance Notes
+## Strategies
 
-- FAISS vector sampling uses `IndexFlatIP.reconstruct()` per-vector — never loads all 2.5M vectors
-- PCA results are cached via `@st.cache_data(ttl=1800)` — recomputed at most every 30 minutes
-- Cleaned CSV loads only 5,000 rows for the dataset explorer
-- All expensive operations are cached with `@st.cache_resource` or `@st.cache_data`
+| Key | Name | Definition |
+|---|---|---|
+| A | Baseline | Dense search over the text index. No metadata. |
+| B | Post-filter | Strategy A over-fetched, then filtered on metadata. |
+| C | MICE | Metadata injected into the embedded text, MICE index. |
+
+Definitions mirror `retrieval.py` so the dashboard cannot drift from the code.
+
+## Degradation
+
+Every read is cached and guarded. A missing or malformed file degrades that
+section to a warning instead of taking the app down — a model with no
+`eval_results.json` shows an "unavailable" notice and the other tabs still render.
+
+## Tests
+
+```bash
+python streamlit_app/test_app.py
+```
+
+Asserts the model registry, the brand palette, chart option construction and the
+missing-file fallbacks against real payloads.

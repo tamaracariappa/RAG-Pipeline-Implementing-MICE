@@ -8,9 +8,12 @@
 streamlit>=1.49.0
 
 # Visualization
-plotly>=5.19.0
+# app.py renders every chart through ECharts and the query grid through
+# AgGrid. Plotly is no longer imported by app.py.
+streamlit-echarts>=0.7.0
+streamlit-aggrid>=1.2.1
 
-# PCA (already in scikit-learn from main requirements)
+# PCA - used by scripts/precompute_pca.py only, never by the app itself
 scikit-learn>=1.4.0
 
 # Data
