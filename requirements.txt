@@ -43,3 +43,8 @@ scikit-learn>=1.4.0
 #                 attention path without it.
 #   accelerate  - only needed for device_map / low_cpu_mem_usage sharded
 #                 loading, which no code path here uses.
+
+
+# UI Dashboard dependencies
+streamlit-echarts>=0.7.0
+streamlit-aggrid>=1.2.1
